@@ -51,6 +51,7 @@ function normalizeCityName(value = '') {
   return cleanText(value)
     .replace(/\bSeville\b/gi, 'Sevilla')
     .replace(/\bSpain\b/gi, 'España')
+    .replace(/\bUnited States\b/gi, 'Estados Unidos')
     .replace(/\bProvince of\b.*$/i, '')
     .trim();
 }
@@ -129,12 +130,14 @@ function parseTripadvisorUrl(url) {
   const afterReviews = withoutExtension.split(/-Reviews-/i)[1] || withoutExtension;
   const [rawName, rawCity = ''] = afterReviews.split('-');
   const city = normalizeCityName(rawCity);
+  const locationId = withoutExtension.match(/(?:^|-)d(\d+)(?:-|$)/i)?.[1] || '';
 
   return {
     name: cleanName(rawName),
     zone: city,
     address: [cleanName(rawName), city].filter(Boolean).join(', '),
     coordinates: extractCoordinatesFromText(url),
+    tripadvisorLocationId: locationId,
   };
 }
 
@@ -242,6 +245,18 @@ function appendZone(address = '', zone = '') {
   return normalizeForMatch(address).includes(normalizeForMatch(zone)) ? address : [address, zone].join(', ');
 }
 
+function getServerEnv(name) {
+  return globalThis.process?.env?.[name] || '';
+}
+
+function getGooglePlacesApiKey() {
+  return getServerEnv('GOOGLE_PLACES_API_KEY') || getServerEnv('GOOGLE_MAPS_API_KEY') || getServerEnv('VITE_GOOGLE_MAPS_API_KEY');
+}
+
+function getTripadvisorApiKey() {
+  return getServerEnv('TRIPADVISOR_API_KEY') || getServerEnv('VITE_TRIPADVISOR_API_KEY');
+}
+
 function slugify(value = '') {
   return cleanText(value)
     .toLowerCase()
@@ -259,13 +274,16 @@ function getEnglishCitySlug(value = '') {
 
 function getLikelyPublicPages(basePlace) {
   const placeSlug = normalizeForMatch(basePlace.name);
+  const dashedPlaceSlug = slugify(basePlace.name);
   const citySlug = getEnglishCitySlug(basePlace.zone || basePlace.address);
   if (!placeSlug || placeSlug.length < 3) return [];
 
-  return [
+  return [...new Set([
     `https://${placeSlug}.menustic.com/`,
+    dashedPlaceSlug && dashedPlaceSlug !== placeSlug ? `https://${dashedPlaceSlug}.menustic.com/` : '',
     citySlug ? `https://intravel.net/${citySlug}/restaurants-cafes/${placeSlug}` : '',
-  ].filter(Boolean);
+    citySlug && dashedPlaceSlug && dashedPlaceSlug !== placeSlug ? `https://intravel.net/${citySlug}/restaurants-cafes/${dashedPlaceSlug}` : '',
+  ].filter(Boolean))];
 }
 
 async function searchLikelyPublicPages(basePlace) {
@@ -336,6 +354,46 @@ function normalizeForMatch(value = '') {
     .replace(/[^a-z0-9]/g, '');
 }
 
+function inferCountryCode(value = '') {
+  const normalized = normalizeForMatch(value);
+  if (/(sevilla|seville|espana|spain|andalucia)/.test(normalized)) return 'es';
+  return '';
+}
+
+function inferExpectedCity(value = '') {
+  const normalized = normalizeForMatch(value);
+  if (/(sevilla|seville)/.test(normalized)) return 'sevilla';
+  return '';
+}
+
+function resultMatchesExpectedLocation(result, basePlace = {}, query = '') {
+  const expectedContext = [query, basePlace.zone, basePlace.address].filter(Boolean).join(' ');
+  const expectedCountry = inferCountryCode(expectedContext);
+  const expectedCity = inferExpectedCity(expectedContext);
+  const address = result?.rawAddress || {};
+
+  if (expectedCountry && address.country_code && address.country_code.toLowerCase() !== expectedCountry) return false;
+
+  if (expectedCity) {
+    const resultContext = [
+      address.city,
+      address.town,
+      address.village,
+      address.municipality,
+      address.county,
+      address.province,
+      address.state,
+      result.address,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    if (!normalizeForMatch(resultContext).includes(expectedCity)) return false;
+  }
+
+  return true;
+}
+
 function isBroadPlaceResult(result) {
   return (
     ['boundary', 'place'].includes(result.category) ||
@@ -353,6 +411,7 @@ function isAddressQuery(query) {
 
 function isSpecificEnough(result, basePlace, query) {
   if (!Number.isFinite(Number(result?.lat)) || !Number.isFinite(Number(result?.lng))) return false;
+  if (!resultMatchesExpectedLocation(result, basePlace, query)) return false;
   if (isAddressQuery(query)) return true;
   if (isBroadPlaceResult(result)) return false;
 
@@ -361,27 +420,7 @@ function isSpecificEnough(result, basePlace, query) {
   return Boolean(resultName && baseName && (resultName.includes(baseName) || baseName.includes(resultName)));
 }
 
-async function searchOpenStreetMap(query) {
-  if (!query.trim()) return null;
-
-  const url = new URL('https://nominatim.openstreetmap.org/search');
-  url.searchParams.set('format', 'jsonv2');
-  url.searchParams.set('limit', '1');
-  url.searchParams.set('addressdetails', '1');
-  url.searchParams.set('accept-language', 'es');
-  url.searchParams.set('q', query.trim());
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      accept: 'application/json',
-      'user-agent': 'Rumbo personal app',
-    },
-  });
-  if (!response.ok) return null;
-
-  const [result] = await response.json();
-  if (!result) return null;
-
+function normalizeOpenStreetMapResult(result) {
   return {
     name: result.name || result.display_name?.split(',')[0] || '',
     address: result.display_name || '',
@@ -392,6 +431,33 @@ async function searchOpenStreetMap(query) {
     lat: Number(result.lat),
     lng: Number(result.lon),
   };
+}
+
+async function searchOpenStreetMap(query, basePlace = {}) {
+  if (!query.trim()) return null;
+
+  const url = new URL('https://nominatim.openstreetmap.org/search');
+  url.searchParams.set('format', 'jsonv2');
+  url.searchParams.set('limit', '5');
+  url.searchParams.set('addressdetails', '1');
+  url.searchParams.set('accept-language', 'es');
+  url.searchParams.set('q', query.trim());
+  const countryCode = inferCountryCode([query, basePlace.zone, basePlace.address].filter(Boolean).join(' '));
+  if (countryCode) url.searchParams.set('countrycodes', countryCode);
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      accept: 'application/json',
+      'user-agent': 'Rumbo personal app',
+    },
+  });
+  if (!response.ok) return null;
+
+  const results = await response.json();
+  if (!results.length) return null;
+
+  const normalizedResults = results.map(normalizeOpenStreetMapResult);
+  return normalizedResults.find((result) => resultMatchesExpectedLocation(result, basePlace, query)) || normalizedResults[0];
 }
 
 async function reverseOpenStreetMap(coordinates) {
@@ -427,11 +493,144 @@ async function reverseOpenStreetMap(coordinates) {
   };
 }
 
+function formatTripadvisorAddress(address = {}) {
+  return [address.street1, address.street2, address.city, address.state, address.country].filter(Boolean).join(', ');
+}
+
+async function fetchTripadvisorDetails(basePlace) {
+  const apiKey = getTripadvisorApiKey();
+  if (!apiKey || !basePlace.tripadvisorLocationId) return null;
+
+  const url = new URL(`https://api.content.tripadvisor.com/api/v1/location/${basePlace.tripadvisorLocationId}/details`);
+  url.searchParams.set('key', apiKey);
+  url.searchParams.set('language', 'es');
+  url.searchParams.set('currency', 'EUR');
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4500);
+
+  try {
+    const response = await fetch(url.toString(), {
+      signal: controller.signal,
+      headers: {
+        accept: 'application/json',
+        'user-agent': 'Rumbo personal app',
+      },
+    });
+    if (!response.ok) return null;
+
+    const result = await response.json();
+    const address = formatTripadvisorAddress(result.address_obj || {});
+    const lat = Number(result.latitude);
+    const lng = Number(result.longitude);
+
+    return {
+      name: cleanName(result.name || basePlace.name),
+      address: normalizeCityName(address),
+      zone: normalizeCityName(result.address_obj?.city || basePlace.zone || ''),
+      lat: Number.isFinite(lat) ? lat : '',
+      lng: Number.isFinite(lng) ? lng : '',
+      rating: Number(result.rating || 0),
+      source: 'tripadvisor-api',
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function googlePlaceToResult(place, basePlace = {}) {
+  const location = place.location || {};
+  const lat = Number(location.latitude);
+  const lng = Number(location.longitude);
+  const name = cleanName(place.displayName?.text || basePlace.name || '');
+
+  return {
+    name,
+    address: normalizeCityName(place.formattedAddress || ''),
+    zone: normalizeCityName(
+      place.addressComponents?.find((component) => component.types?.includes('locality'))?.longText || basePlace.zone || '',
+    ),
+    lat: Number.isFinite(lat) ? lat : '',
+    lng: Number.isFinite(lng) ? lng : '',
+    rating: Number(place.rating || 0),
+    source: 'google-places',
+  };
+}
+
+function googleScore(place, basePlace = {}) {
+  const resultName = normalizeForMatch(place.displayName?.text || '');
+  const baseName = normalizeForMatch(basePlace.name || '');
+  const formattedAddress = normalizeForMatch(place.formattedAddress || '');
+  const expectedCity = inferExpectedCity([basePlace.zone, basePlace.address].filter(Boolean).join(' '));
+  const expectedCountry = inferCountryCode([basePlace.zone, basePlace.address].join(' '));
+  let score = 0;
+
+  if (resultName && baseName && resultName === baseName) score += 5;
+  else if (resultName && baseName && (resultName.includes(baseName) || baseName.includes(resultName))) score += 3;
+  if (expectedCity && formattedAddress.includes(expectedCity)) score += 2;
+  if (expectedCountry && inferCountryCode(place.formattedAddress || '') === expectedCountry) score += 1;
+  if (place.rating) score += Math.min(Number(place.rating), 5) / 10;
+
+  return score;
+}
+
+async function searchGooglePlaces(basePlace) {
+  const apiKey = getGooglePlacesApiKey();
+  if (!apiKey || !basePlace.name) return null;
+
+  const query = [basePlace.name, basePlace.address, basePlace.zone || 'Sevilla'].filter(Boolean).join(', ');
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4500);
+
+  try {
+    const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask':
+          'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.googleMapsUri,places.websiteUri,places.addressComponents,places.primaryType,places.types',
+      },
+      body: JSON.stringify({
+        textQuery: query,
+        languageCode: 'es',
+        regionCode: inferCountryCode(query)?.toUpperCase() || undefined,
+        maxResultCount: 5,
+      }),
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    const places = data.places || [];
+    if (!places.length) return null;
+
+    const [bestPlace] = places
+      .map((place) => ({ place, score: googleScore(place, basePlace) }))
+      .filter(({ score }) => score >= 3)
+      .sort((a, b) => b.score - a.score);
+
+    return bestPlace ? googlePlaceToResult(bestPlace.place, basePlace) : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function enrichPlace(basePlace) {
   if (basePlace.coordinates) {
     const reverseResult = await reverseOpenStreetMap(basePlace.coordinates);
     if (reverseResult) return reverseResult;
   }
+
+  const tripadvisorResult = await fetchTripadvisorDetails(basePlace);
+  if (tripadvisorResult && tripadvisorResult.lat !== '' && tripadvisorResult.lng !== '') return tripadvisorResult;
+
+  const googleResult = await searchGooglePlaces(basePlace);
+  if (googleResult && googleResult.lat !== '' && googleResult.lng !== '') return googleResult;
 
   const webResult = await searchPublicWeb(basePlace);
   const queries = [
@@ -445,7 +644,7 @@ async function enrichPlace(basePlace) {
   ].filter(Boolean);
 
   for (const query of [...new Set(queries)]) {
-    const result = await searchOpenStreetMap(query);
+    const result = await searchOpenStreetMap(query, basePlace);
     if (result && isSpecificEnough(result, basePlace, query)) {
       return {
         ...result,
@@ -456,7 +655,7 @@ async function enrichPlace(basePlace) {
     }
   }
 
-  return webResult;
+  return tripadvisorResult || googleResult || webResult;
 }
 
 export async function buildImportedPlace(rawUrl) {

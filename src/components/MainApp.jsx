@@ -26,9 +26,11 @@ import LinkIcon from '@mui/icons-material/Link';
 import MapIcon from '@mui/icons-material/Map';
 import FullscreenIcon from '@mui/icons-material/Fullscreen';
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import MyLocationIcon from '@mui/icons-material/MyLocation';
 import RouteIcon from '@mui/icons-material/Route';
 import SearchIcon from '@mui/icons-material/Search';
-import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import { useTheme } from '@mui/material/styles';
 import { demoInbox, demoPlaces, statusOptions } from '../data/demoData';
 import { useAuth } from '../context/AuthContext';
@@ -97,6 +99,7 @@ export default function MainApp() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [panelExpanded, setPanelExpanded] = useState(false);
   const [toast, setToast] = useState('');
   const panelScrollRef = useRef(null);
 
@@ -104,8 +107,8 @@ export default function MainApp() {
   const inbox = inboxStore.items;
   const filteredPlaces = usePlaceFilters(places, filters, position);
   const selectedPlace = places.find((place) => place.id === selectedPlaceId) || null;
-  const mapHeight = panelCollapsed ? 'calc(100dvh - 74px)' : tab === 'map' ? '64dvh' : '52dvh';
-  const panelHeight = panelCollapsed ? '74px' : tab === 'map' ? '36dvh' : '48dvh';
+  const mapHeight = panelCollapsed ? '100dvh' : panelExpanded ? '34dvh' : tab === 'map' ? '66dvh' : '56dvh';
+  const panelHeight = panelCollapsed ? '0px' : panelExpanded ? '68dvh' : tab === 'map' ? '36dvh' : '48dvh';
 
   const stats = useMemo(() => {
     return {
@@ -131,6 +134,7 @@ export default function MainApp() {
   function changeTab(nextTab) {
     if (nextTab !== tab) setToast('');
     setPanelCollapsed(false);
+    setPanelExpanded(false);
     setTab(nextTab);
   }
 
@@ -233,6 +237,7 @@ export default function MainApp() {
     setMapCenter({ lat: payload.lat, lng: payload.lng });
     setPlaceDialogOpen(false);
     setPanelCollapsed(false);
+    setPanelExpanded(false);
     setTab('map');
     return true;
   }
@@ -248,6 +253,7 @@ export default function MainApp() {
     await inboxStore.addItem(candidate);
     setLinkDialogOpen(false);
     setPanelCollapsed(false);
+    setPanelExpanded(false);
     setTab('inbox');
     setToast('Enlace analizado y enviado a Revisar.');
   }
@@ -283,6 +289,7 @@ export default function MainApp() {
     setSelectedPlaceId(created.id);
     setMapCenter({ lat: payload.lat, lng: payload.lng });
     setPanelCollapsed(false);
+    setPanelExpanded(false);
     setTab('map');
     setToast(`Recomendación guardada en el mapa${approximate ? ' con ubicación aproximada' : ''}.`);
   }
@@ -319,6 +326,7 @@ export default function MainApp() {
     }
     setTab('map');
     setPanelCollapsed(false);
+    setPanelExpanded(false);
   }
 
   function selectPlace(place, options = {}) {
@@ -327,6 +335,13 @@ export default function MainApp() {
     setMapCenter({ lat: Number(place.lat), lng: Number(place.lng) });
     if (options.openMapTab !== false) setTab('map');
     setPanelCollapsed(false);
+    setPanelExpanded(false);
+  }
+
+  function centerOnUser() {
+    setSelectedPlaceId(null);
+    setMapCenter({ lat: position.lat, lng: position.lng });
+    setToast(locationStatus === 'ready' ? 'Centrado en tu ubicación.' : 'Centrado en tu referencia.');
   }
 
   function openDirections(place) {
@@ -342,6 +357,7 @@ export default function MainApp() {
     setFilters((current) => ({ ...current, zone, sort: zone ? 'zone' : 'nearest' }));
     setTab('map');
     setPanelCollapsed(false);
+    setPanelExpanded(false);
     setToast(zone ? `Mostrando lugares de ${zone}.` : 'Mostrando todas las zonas.');
   }
 
@@ -397,7 +413,7 @@ export default function MainApp() {
         sx={{
           display: 'grid',
           gridTemplateRows: { xs: 'auto minmax(0, 1fr)', md: '1fr' },
-          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 430px' },
+          gridTemplateColumns: { xs: '1fr', md: panelCollapsed ? '1fr 0px' : 'minmax(0, 1fr) 430px' },
           height: '100%',
         }}
       >
@@ -419,7 +435,7 @@ export default function MainApp() {
             elevation={0}
             sx={{
               top: 0,
-              background: 'linear-gradient(180deg, rgba(248,251,248,0.98), rgba(248,251,248,0.82) 74%, rgba(248,251,248,0))',
+              background: 'linear-gradient(180deg, rgba(247,244,237,0.98), rgba(247,244,237,0.84) 74%, rgba(247,244,237,0))',
               pb: 5,
               pointerEvents: 'none',
             }}
@@ -471,7 +487,7 @@ export default function MainApp() {
                   '&:hover': { bgcolor: 'background.paper' },
                 }}
               >
-                Buscar lugar o pegar enlace
+                Buscar o pegar enlace
               </Button>
             </Box>
           </AppBar>
@@ -479,7 +495,10 @@ export default function MainApp() {
           <Stack sx={{ position: 'absolute', right: 12, top: 132, gap: 1 }}>
             <Tooltip title={panelCollapsed ? 'Mostrar panel' : 'Ver solo mapa'}>
               <IconButton
-                onClick={() => setPanelCollapsed((current) => !current)}
+                onClick={() => {
+                  setPanelCollapsed((current) => !current);
+                  setPanelExpanded(false);
+                }}
                 sx={{ bgcolor: 'background.paper', boxShadow: '0 8px 20px rgba(6,42,48,0.14)' }}
               >
                 {panelCollapsed ? <FullscreenExitIcon /> : <FullscreenIcon />}
@@ -491,11 +510,32 @@ export default function MainApp() {
               </IconButton>
             </Tooltip>
             <Tooltip title={locationStatus === 'ready' ? 'Mi ubicación' : 'Referencia de cercanía'}>
-              <IconButton onClick={() => setMapCenter(position)} sx={{ bgcolor: 'background.paper', boxShadow: '0 8px 20px rgba(6,42,48,0.14)' }}>
-                <TravelExploreIcon />
+              <IconButton onClick={centerOnUser} sx={{ bgcolor: 'background.paper', boxShadow: '0 8px 20px rgba(6,42,48,0.14)' }}>
+                <MyLocationIcon />
               </IconButton>
             </Tooltip>
           </Stack>
+
+          <Button
+            startIcon={<MyLocationIcon />}
+            onClick={centerOnUser}
+            sx={{
+              position: 'absolute',
+              left: { xs: 14, md: 18 },
+              bottom: { xs: 20, md: 22 },
+              minHeight: 42,
+              px: 1.6,
+              bgcolor: 'rgba(255,255,255,0.94)',
+              color: 'primary.dark',
+              border: '1px solid rgba(15,107,95,0.14)',
+              borderRadius: 999,
+              boxShadow: '0 10px 24px rgba(6,42,48,0.14)',
+              backdropFilter: 'blur(14px)',
+              '&:hover': { bgcolor: '#fff' },
+            }}
+          >
+            {locationStatus === 'ready' ? 'Mi ubicación' : 'Referencia'}
+          </Button>
 
           <Fab
             color="secondary"
@@ -519,17 +559,30 @@ export default function MainApp() {
           sx={{
             minHeight: 0,
             height: { xs: panelHeight, md: '100dvh' },
-            borderRadius: { xs: '18px 18px 0 0', md: 0 },
+            borderRadius: { xs: '26px 26px 0 0', md: 0 },
             borderLeft: { md: '1px solid rgba(0,97,111,0.12)' },
             mt: { xs: -2, md: 0 },
             zIndex: 20,
             overflow: 'hidden',
-            display: 'grid',
+            display: panelCollapsed ? 'none' : 'grid',
             gridTemplateRows: 'minmax(0, 1fr) auto',
+            boxShadow: { xs: '0 -18px 46px rgba(6,42,48,0.16)', md: 'none' },
           }}
         >
           <Box ref={panelScrollRef} sx={{ display: panelCollapsed ? 'none' : 'block', overflow: 'auto', pt: { xs: 1, md: 2 }, pb: 1 }}>
-            {!isDesktop && <Box sx={{ width: 44, height: 5, borderRadius: 99, bgcolor: 'divider', mx: 'auto', mb: 1.5 }} />}
+            {!isDesktop && (
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, mb: 1, minHeight: 36, position: 'relative' }}>
+                <Box sx={{ width: 44, height: 5, borderRadius: 99, bgcolor: 'divider', mx: 'auto', position: 'absolute', left: '50%', transform: 'translateX(-50%)' }} />
+                <Button
+                  size="small"
+                  onClick={() => setPanelExpanded((current) => !current)}
+                  startIcon={panelExpanded ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
+                  sx={{ ml: 'auto', minHeight: 34, borderRadius: 999, color: 'text.secondary' }}
+                >
+                  {panelExpanded ? 'Menos' : 'Más'}
+                </Button>
+              </Stack>
+            )}
             {locationStatus !== 'ready' && locationError && (
               <Alert severity={locationStatus === 'manual' ? 'success' : 'info'} sx={{ mx: 2, mb: 1.5 }}>
                 {locationError}
@@ -545,7 +598,7 @@ export default function MainApp() {
 
           <Box sx={{ borderTop: '1px solid rgba(0,97,111,0.10)', bgcolor: 'background.paper', pb: 'env(safe-area-inset-bottom)' }}>
             <BottomNavigation
-              value={panelCollapsed ? null : tab}
+              value={tab}
               onChange={(_, value) => changeTab(value)}
               showLabels
               sx={{

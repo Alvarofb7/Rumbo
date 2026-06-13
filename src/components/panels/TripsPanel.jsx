@@ -1,6 +1,5 @@
-import { Box, Button, Chip, Divider, Paper, Stack, Typography } from '@mui/material';
+import { Box, Button, Chip, Divider, Stack, Typography } from '@mui/material';
 import RouteIcon from '@mui/icons-material/Route';
-import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 
 export default function TripsPanel({ places, onSelectZone }) {
   const zones = Object.entries(
@@ -32,18 +31,6 @@ export default function TripsPanel({ places, onSelectZone }) {
           <Typography color="text.secondary">Explora tus lugares guardados por ciudad, barrio o viaje.</Typography>
         </Box>
       </Stack>
-
-      <Paper variant="outlined" sx={{ p: 2, borderColor: 'rgba(0,97,111,0.14)' }}>
-        <Stack direction="row" spacing={1.25} alignItems="center">
-          <TravelExploreIcon color="secondary" />
-          <Box>
-            <Typography variant="h4">Cómo funciona</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Toca una zona para filtrar el mapa y ver solo los sitios guardados allí, ordenados por cercanía o ranking.
-            </Typography>
-          </Box>
-        </Stack>
-      </Paper>
 
       <Box>
         <Typography variant="h4" sx={{ mb: 1 }}>

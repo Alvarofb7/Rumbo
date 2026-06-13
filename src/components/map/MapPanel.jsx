@@ -34,11 +34,12 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
   const visiblePlaces = places.filter(hasValidCoordinates);
 
   return (
-    <Box sx={{ width: '100%', height: '100%' }}>
-      <MapContainer center={[safeCenter.lat, safeCenter.lng]} zoom={14} zoomControl={false} attributionControl>
+    <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
+      <MapContainer center={[safeCenter.lat, safeCenter.lng]} zoom={14} zoomControl={false} attributionControl={false}>
         <TileLayer
           attribution={localNameTileLayer.attribution}
           url={localNameTileLayer.url}
+          className="rumbo-map-tiles"
         />
         <Recenter center={safeCenter} />
         {hasValidCoordinates(userPosition) && (
@@ -95,6 +96,9 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
           );
         })}
       </MapContainer>
+      <Box className="rumbo-map-attribution">
+        © OpenStreetMap
+      </Box>
     </Box>
   );
 }

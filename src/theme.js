@@ -4,19 +4,19 @@ export const theme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#00616f',
-      dark: '#004d57',
-      light: '#dff4f1',
+      main: '#0f6b5f',
+      dark: '#084b43',
+      light: '#e1f2ee',
       contrastText: '#ffffff',
     },
     secondary: {
-      main: '#f9b826',
-      dark: '#d99600',
-      light: '#fff3c7',
+      main: '#ffb86b',
+      dark: '#d8852f',
+      light: '#fff0dc',
       contrastText: '#062a30',
     },
     background: {
-      default: '#f8fbf8',
+      default: '#f7f4ed',
       paper: '#ffffff',
     },
     text: {
@@ -31,7 +31,7 @@ export const theme = createTheme({
     },
   },
   shape: {
-    borderRadius: 8,
+    borderRadius: 14,
   },
   typography: {
     fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -52,7 +52,7 @@ export const theme = createTheme({
       },
       styleOverrides: {
         root: {
-          borderRadius: 8,
+          borderRadius: 14,
           minHeight: 44,
         },
       },
@@ -60,7 +60,7 @@ export const theme = createTheme({
     MuiChip: {
       styleOverrides: {
         root: {
-          borderRadius: 8,
+          borderRadius: 999,
           fontWeight: 600,
         },
       },
@@ -68,7 +68,7 @@ export const theme = createTheme({
     MuiPaper: {
       styleOverrides: {
         rounded: {
-          borderRadius: 8,
+          borderRadius: 18,
         },
       },
     },

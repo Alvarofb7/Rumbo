@@ -42,8 +42,19 @@ Mientras estés en la URL local, puedes usar la búsqueda para mover el mapa y f
 
 ## Mapa
 
-La app usa Leaflet con teselas CARTO Voyager sobre OpenStreetMap para un aspecto más suave, parecido a Apple Maps. Usar Apple Maps real requeriría integrar MapKit JS y generar un token desde Apple Developer.
+La app usa Leaflet con teselas OpenStreetMap y una capa visual suavizada para mantener nombres locales como `Sevilla`. La atribución de OpenStreetMap debe mantenerse por licencia, aunque se muestra de forma discreta en la interfaz. Usar Apple Maps real requiere MapKit JS, un Maps ID y una clave/token desde Apple Developer.
+
+## Importación de lugares
+
+El importador intenta resolver enlaces por este orden:
+
+1. Coordenadas explícitas del enlace, si existen.
+2. Tripadvisor Content API si defines `TRIPADVISOR_API_KEY`.
+3. Google Places Text Search si defines `GOOGLE_PLACES_API_KEY`.
+4. Páginas públicas legibles y geocoding con OpenStreetMap como fallback.
+
+Para máxima precisión en restaurantes y bares, configura `GOOGLE_PLACES_API_KEY` en Vercel como variable server-only.
 
 ## Variables
 
-Consulta `.env.example`. Las claves de Google Maps, Tripadvisor e Instagram están preparadas como integraciones futuras; la versión inicial no hace scraping y guarda esas URLs como fuentes editables.
+Consulta `.env.example`. No uses prefijo `VITE_` para claves privadas de Google Places o Tripadvisor: las variables sin `VITE_` solo las lee la API serverless.

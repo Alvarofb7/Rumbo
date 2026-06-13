@@ -44,6 +44,14 @@ export async function searchLocation(query) {
   const trimmed = query.trim();
   if (!trimmed) return [];
 
+  try {
+    const response = await fetch(`/api/search-location?q=${encodeURIComponent(trimmed)}`);
+    const contentType = response.headers.get('content-type') || '';
+    if (response.ok && contentType.includes('application/json')) return response.json();
+  } catch {
+    // Fall back to direct OpenStreetMap search when the serverless API is not available locally.
+  }
+
   const url = new URL('https://nominatim.openstreetmap.org/search');
   url.searchParams.set('format', 'jsonv2');
   url.searchParams.set('limit', '8');
