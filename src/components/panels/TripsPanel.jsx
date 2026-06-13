@@ -28,8 +28,8 @@ export default function TripsPanel({ places, onSelectZone }) {
       <Stack direction="row" spacing={1.5} alignItems="center">
         <RouteIcon color="primary" />
         <Box>
-          <Typography variant="h3">Viajes y zonas</Typography>
-          <Typography color="text.secondary">Agrupa tus planes por ciudad o barrio.</Typography>
+          <Typography variant="h3">Zonas</Typography>
+          <Typography color="text.secondary">Explora tus lugares guardados por ciudad, barrio o viaje.</Typography>
         </Box>
       </Stack>
 
@@ -37,9 +37,9 @@ export default function TripsPanel({ places, onSelectZone }) {
         <Stack direction="row" spacing={1.25} alignItems="center">
           <TravelExploreIcon color="secondary" />
           <Box>
-            <Typography variant="h4">Modo viaje</Typography>
+            <Typography variant="h4">Cómo funciona</Typography>
             <Typography variant="body2" color="text.secondary">
-              Ordena por cercanía y revisa pendientes cuando estés en una zona.
+              Toca una zona para filtrar el mapa y ver solo los sitios guardados allí, ordenados por cercanía o ranking.
             </Typography>
           </Box>
         </Stack>
@@ -59,7 +59,7 @@ export default function TripsPanel({ places, onSelectZone }) {
                 </Typography>
               </Box>
               <Button variant="outlined" onClick={() => onSelectZone(zone === 'Sin zona' ? '' : zone)}>
-                Ver
+                Abrir zona
               </Button>
             </Stack>
           ))}

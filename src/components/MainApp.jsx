@@ -34,7 +34,7 @@ import { useUserCollection } from '../hooks/useFirestoreCollection';
 import { usePlaceFilters } from '../hooks/usePlaceFilters';
 import { useUserLocation } from '../hooks/useUserLocation';
 import { searchLocation } from '../lib/geo';
-import { parsePlaceLink } from '../lib/linkParser';
+import { importPlaceFromUrl } from '../lib/placeImporter';
 import FilterDrawer from './filters/FilterDrawer';
 import InboxPanel from './panels/InboxPanel';
 import LinkImportDialog from './dialogs/LinkImportDialog';
@@ -57,6 +57,7 @@ const emptyPlace = {
   notes: '',
   sourceType: 'manual',
   sourceUrl: '',
+  resolvedUrl: '',
 };
 
 const initialFilters = {
@@ -106,7 +107,8 @@ export default function MainApp() {
   const stats = useMemo(() => {
     return {
       saved: places.length,
-      pending: places.filter((place) => place.status === 'wishlist').length + inbox.length,
+      pending: places.filter((place) => place.status === 'wishlist').length,
+      review: inbox.length,
       visited: places.filter((place) => place.status === 'visited').length,
       favorites: places.filter((place) => place.status === 'favorite').length,
     };
@@ -115,6 +117,18 @@ export default function MainApp() {
   useEffect(() => {
     panelScrollRef.current?.scrollTo({ top: 0 });
   }, [tab]);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+
+    const timeoutId = window.setTimeout(() => setToast(''), 3500);
+    return () => window.clearTimeout(timeoutId);
+  }, [toast]);
+
+  function changeTab(nextTab) {
+    if (nextTab !== tab) setToast('');
+    setTab(nextTab);
+  }
 
   function openCreatePlace(prefill = null) {
     setEditingPlace(prefill || { ...emptyPlace });
@@ -126,6 +140,29 @@ export default function MainApp() {
     setPlaceDialogOpen(true);
   }
 
+  async function resolvePlaceLocation(place) {
+    const queries = [
+      [place.name, place.address, place.zone].filter(Boolean).join(', '),
+      [place.address, place.zone].filter(Boolean).join(', '),
+      [place.name, place.zone].filter(Boolean).join(', '),
+      place.address,
+      place.name,
+    ]
+      .map((query) => query?.trim())
+      .filter(Boolean);
+
+    for (const query of [...new Set(queries)]) {
+      try {
+        const [result] = await searchLocation(query);
+        if (result) return result;
+      } catch {
+        // Try the next query before falling back to the user position.
+      }
+    }
+
+    return null;
+  }
+
   async function buildPlacePayload(place) {
     let coordinates = hasValidCoordinates(place)
       ? {
@@ -134,19 +171,12 @@ export default function MainApp() {
         }
       : { lat: Number.NaN, lng: Number.NaN };
     let approximate = false;
+    let locationResult = null;
 
     if (!hasValidCoordinates(coordinates)) {
-      const query = [place.address, place.name, place.zone].filter(Boolean).join(', ');
-
-      if (query.trim()) {
-        try {
-          const [result] = await searchLocation(query);
-          if (result) {
-            coordinates = { lat: result.lat, lng: result.lng };
-          }
-        } catch {
-          coordinates = { lat: Number.NaN, lng: Number.NaN };
-        }
+      locationResult = await resolvePlaceLocation(place);
+      if (locationResult) {
+        coordinates = { lat: locationResult.lat, lng: locationResult.lng };
       }
     }
 
@@ -158,6 +188,8 @@ export default function MainApp() {
     return {
       payload: {
         ...place,
+        address: place.address || locationResult?.address || '',
+        zone: place.zone || locationResult?.zone || '',
         lat: coordinates.lat,
         lng: coordinates.lng,
         rating: Number(place.rating || 0),
@@ -192,11 +224,11 @@ export default function MainApp() {
   }
 
   async function handleImportLink(url) {
-    const candidate = parsePlaceLink(url);
+    const candidate = await importPlaceFromUrl(url);
     await inboxStore.addItem(candidate);
     setLinkDialogOpen(false);
     setTab('inbox');
-    setToast('Enlace añadido a la bandeja.');
+    setToast('Enlace analizado y enviado a Revisar.');
   }
 
   async function handleSaveInboxItem(item) {
@@ -212,6 +244,7 @@ export default function MainApp() {
       notes: item.notes || '',
       sourceType: item.sourceType,
       sourceUrl: item.sourceUrl,
+      resolvedUrl: item.resolvedUrl || '',
       imageUrl: item.imageUrl || '',
     };
     const { payload, approximate } = await buildPlacePayload(place);
@@ -236,6 +269,7 @@ export default function MainApp() {
       notes: item.notes || '',
       sourceType: item.sourceType,
       sourceUrl: item.sourceUrl,
+      resolvedUrl: item.resolvedUrl || '',
       imageUrl: item.imageUrl || '',
       inboxId: item.id,
     });
@@ -269,6 +303,12 @@ export default function MainApp() {
     const lng = Number(place.lng);
     const label = encodeURIComponent(place.name || 'Destino');
     window.open(`https://maps.apple.com/?daddr=${lat},${lng}&q=${label}`, '_blank', 'noopener,noreferrer');
+  }
+
+  function openZone(zone) {
+    setFilters((current) => ({ ...current, zone, sort: zone ? 'zone' : 'nearest' }));
+    setTab('map');
+    setToast(zone ? `Mostrando lugares de ${zone}.` : 'Mostrando todas las zonas.');
   }
 
   const panel = {
@@ -314,7 +354,7 @@ export default function MainApp() {
         onOpenFilters={() => setFiltersOpen(true)}
       />
     ),
-    trips: <TripsPanel places={places} onSelectZone={(zone) => setFilters((current) => ({ ...current, zone, sort: 'zone' }))} />,
+    trips: <TripsPanel places={places} onSelectZone={openZone} />,
   }[tab];
 
   return (
@@ -461,10 +501,11 @@ export default function MainApp() {
           </Box>
 
           <Box sx={{ borderTop: '1px solid rgba(0,97,111,0.10)', bgcolor: 'background.paper', pb: 'env(safe-area-inset-bottom)' }}>
-            <BottomNavigation value={tab} onChange={(_, value) => setTab(value)} showLabels>
+            <BottomNavigation value={tab} onChange={(_, value) => changeTab(value)} showLabels>
               <BottomNavigationAction label="Mapa" value="map" icon={<MapIcon />} />
+              <BottomNavigationAction label="Lugares" value="saved" icon={<BookmarkBorderIcon />} />
               <BottomNavigationAction
-                label="Bandeja"
+                label="Revisar"
                 value="inbox"
                 icon={
                   <Badge badgeContent={inbox.length} color="primary">
@@ -472,8 +513,7 @@ export default function MainApp() {
                   </Badge>
                 }
               />
-              <BottomNavigationAction label="Guardados" value="saved" icon={<BookmarkBorderIcon />} />
-              <BottomNavigationAction label="Viajes" value="trips" icon={<RouteIcon />} />
+              <BottomNavigationAction label="Zonas" value="trips" icon={<RouteIcon />} />
             </BottomNavigation>
           </Box>
         </Paper>

@@ -26,8 +26,8 @@ export default function InboxPanel({ inbox, onAddLink, onSave, onEdit, onDiscard
       <Stack direction="row" spacing={1.5} alignItems="center">
         <InboxIcon color="primary" />
         <Box sx={{ flex: 1 }}>
-          <Typography variant="h3">Bandeja de recomendaciones</Typography>
-          <Typography color="text.secondary">{inbox.length} enlaces esperando decisión</Typography>
+          <Typography variant="h3">Por revisar</Typography>
+          <Typography color="text.secondary">{inbox.length} enlaces importados esperando decisión</Typography>
         </Box>
         <Button variant="contained" startIcon={<AddLinkIcon />} onClick={onAddLink}>
           Pegar
@@ -50,8 +50,8 @@ export default function InboxPanel({ inbox, onAddLink, onSave, onEdit, onDiscard
         <Paper variant="outlined" sx={{ p: 3, textAlign: 'center', borderColor: 'rgba(0,97,111,0.16)' }}>
           <Stack spacing={1.5} alignItems="center">
             <LinkIcon color="primary" />
-            <Typography variant="h4">Tu bandeja está limpia</Typography>
-            <Typography color="text.secondary">Pega un link de mapas, Tripadvisor o Instagram para convertirlo en lugar.</Typography>
+            <Typography variant="h4">Nada por revisar</Typography>
+            <Typography color="text.secondary">Pega un link de mapas, Tripadvisor o Instagram para previsualizarlo antes de guardarlo.</Typography>
             <Button variant="outlined" startIcon={<AddLinkIcon />} onClick={onAddLink}>
               Añadir enlace
             </Button>

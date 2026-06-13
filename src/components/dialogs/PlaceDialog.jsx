@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import {
   Autocomplete,
+  Alert,
   Box,
   Button,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -19,6 +21,7 @@ import {
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { sourceMeta, statusOptions, tagOptions } from '../../data/demoData';
+import { searchLocation } from '../../lib/geo';
 
 const blankPlace = {
   name: '',
@@ -32,19 +35,83 @@ const blankPlace = {
   notes: '',
   sourceType: 'manual',
   sourceUrl: '',
+  resolvedUrl: '',
 };
 
 export default function PlaceDialog({ open, place, onClose, onSave }) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const [draft, setDraft] = useState(blankPlace);
+  const [locationQuery, setLocationQuery] = useState('');
+  const [locationOptions, setLocationOptions] = useState([]);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState('');
 
   useEffect(() => {
-    if (open) setDraft({ ...blankPlace, ...place });
+    if (open) {
+      const nextDraft = { ...blankPlace, ...place };
+      setDraft(nextDraft);
+      setLocationQuery(nextDraft.address || nextDraft.name || '');
+      setLocationOptions([]);
+      setLocationError('');
+    }
   }, [open, place]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const query = locationQuery.trim();
+    if (query.length < 3) {
+      setLocationOptions([]);
+      setLocationLoading(false);
+      return undefined;
+    }
+
+    let ignore = false;
+    const timeoutId = window.setTimeout(async () => {
+      setLocationLoading(true);
+      setLocationError('');
+
+      try {
+        const results = await searchLocation(query);
+        if (!ignore) setLocationOptions(results);
+      } catch (error) {
+        if (!ignore) {
+          setLocationOptions([]);
+          setLocationError(error.message);
+        }
+      } finally {
+        if (!ignore) setLocationLoading(false);
+      }
+    }, 450);
+
+    return () => {
+      ignore = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [locationQuery, open]);
 
   function update(field, value) {
     setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function hasSelectedLocation() {
+    return draft.lat !== '' && draft.lng !== '' && Number.isFinite(Number(draft.lat)) && Number.isFinite(Number(draft.lng));
+  }
+
+  function applyLocation(result) {
+    if (!result || typeof result === 'string') return;
+
+    setDraft((current) => ({
+      ...current,
+      name: current.name?.trim() ? current.name : result.name,
+      address: result.address || current.address,
+      zone: current.zone || result.zone || '',
+      lat: result.lat,
+      lng: result.lng,
+    }));
+    setLocationQuery(result.address || result.name);
+    setLocationOptions([]);
   }
 
   function handleSave() {
@@ -55,6 +122,7 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
       address: draft.address.trim(),
       zone: draft.zone.trim(),
       sourceUrl: draft.sourceUrl.trim(),
+      resolvedUrl: draft.resolvedUrl || '',
       notes: draft.notes.trim(),
     });
   }
@@ -64,6 +132,40 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
       <DialogTitle>{draft.id ? 'Editar lugar' : 'Nuevo lugar'}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ pt: 1 }}>
+          <Autocomplete
+            filterOptions={(options) => options}
+            options={locationOptions}
+            getOptionLabel={(option) => (typeof option === 'string' ? option : `${option.name} · ${option.address}`)}
+            inputValue={locationQuery}
+            onInputChange={(_, value) => setLocationQuery(value)}
+            onChange={(_, value) => applyLocation(value)}
+            loading={locationLoading}
+            noOptionsText={locationQuery.trim().length < 3 ? 'Escribe al menos 3 caracteres' : 'Sin resultados'}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Buscar sitio en el mapa"
+                placeholder="Nombre, dirección, barrio..."
+                helperText="Elige un resultado para fijar el punto exacto en el mapa."
+              />
+            )}
+          />
+
+          {locationLoading && (
+            <Stack direction="row" spacing={1} alignItems="center">
+              <CircularProgress size={18} />
+              <Typography variant="body2" color="text.secondary">
+                Buscando lugares...
+              </Typography>
+            </Stack>
+          )}
+          {locationError && <Alert severity="warning">{locationError}</Alert>}
+          {hasSelectedLocation() && (
+            <Alert severity="success">
+              Ubicación seleccionada: {draft.address || `${Number(draft.lat).toFixed(5)}, ${Number(draft.lng).toFixed(5)}`}
+            </Alert>
+          )}
+
           <TextField label="Nombre" value={draft.name} onChange={(event) => update('name', event.target.value)} required fullWidth />
           <TextField label="Dirección" value={draft.address} onChange={(event) => update('address', event.target.value)} fullWidth />
 

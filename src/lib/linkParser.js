@@ -6,11 +6,22 @@ const sourceMatchers = [
 ];
 
 function cleanTitle(value) {
-  return decodeURIComponent(value || '')
+  let decoded = value || '';
+
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    decoded = value || '';
+  }
+
+  return decoded
     .replace(/[-_+]/g, ' ')
+    .replace(/\s*\|\s*(restaurante|restaurant|bar|caf[eé]).*$/i, '')
     .replace(/\s+/g, ' ')
     .replace(/\bRestaurant Review\b/gi, '')
     .replace(/\bTourism\b/gi, '')
+    .replace(/\bOpiniones\b.*$/i, '')
+    .replace(/\bReviews\b.*$/i, '')
     .trim();
 }
 
@@ -20,16 +31,24 @@ function inferSource(url) {
 }
 
 function extractCoordinatesFromText(text) {
-  const atMatch = text.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
-  if (atMatch) return { lat: Number(atMatch[1]), lng: Number(atMatch[2]) };
-
   const bangMatch = text.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
   if (bangMatch) return { lat: Number(bangMatch[1]), lng: Number(bangMatch[2]) };
 
   const llMatch = text.match(/[?&](?:ll|sll|q)=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/);
   if (llMatch) return { lat: Number(llMatch[1]), lng: Number(llMatch[2]) };
 
+  const atMatch = text.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  if (atMatch) return { lat: Number(atMatch[1]), lng: Number(atMatch[2]) };
+
   return null;
+}
+
+function inferTripadvisorTitle(pathname) {
+  const path = pathname.split('/').filter(Boolean).at(-1) || '';
+  const withoutExtension = path.replace(/\.html?$/i, '');
+  const afterReviews = withoutExtension.split(/-Reviews-/i)[1] || withoutExtension;
+  const [rawName] = afterReviews.split('-');
+  return cleanTitle(rawName);
 }
 
 function inferTitle(parsedUrl, sourceType) {
@@ -40,8 +59,7 @@ function inferTitle(parsedUrl, sourceType) {
 
   const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
   if (sourceType === 'tripadvisor') {
-    const candidate = pathParts.find((part) => part.includes('Restaurant') || part.includes('Attraction')) || pathParts.at(-1);
-    return cleanTitle(candidate);
+    return inferTripadvisorTitle(parsedUrl.pathname) || 'Lugar de Tripadvisor';
   }
 
   if (sourceType === 'instagram') return 'Recomendación de Instagram';

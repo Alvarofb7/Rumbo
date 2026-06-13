@@ -28,6 +28,7 @@ export function formatDistance(meters) {
 }
 
 export function normalizeCoordinate(value, fallback) {
+  if (value === '' || value === null || value === undefined) return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -47,6 +48,7 @@ export async function searchLocation(query) {
   url.searchParams.set('format', 'jsonv2');
   url.searchParams.set('limit', '8');
   url.searchParams.set('addressdetails', '1');
+  url.searchParams.set('accept-language', 'es');
   url.searchParams.set('q', trimmed);
 
   const response = await fetch(url.toString(), {
@@ -60,12 +62,30 @@ export async function searchLocation(query) {
   }
 
   const results = await response.json();
-  return results.map((result) => ({
-    id: result.place_id,
-    name: result.name || result.display_name.split(',')[0],
-    address: result.display_name,
-    lat: Number(result.lat),
-    lng: Number(result.lon),
-    type: result.type,
-  }));
+  return results.map((result) => {
+    const address = result.address || {};
+    const zone =
+      address.neighbourhood ||
+      address.suburb ||
+      address.quarter ||
+      address.city_district ||
+      address.city ||
+      address.town ||
+      address.village ||
+      address.municipality ||
+      address.county ||
+      address.state ||
+      '';
+
+    return {
+      id: result.place_id,
+      name: result.name || result.display_name.split(',')[0],
+      address: result.display_name,
+      zone,
+      lat: Number(result.lat),
+      lng: Number(result.lon),
+      type: result.type,
+      category: result.category || result.class,
+    };
+  });
 }

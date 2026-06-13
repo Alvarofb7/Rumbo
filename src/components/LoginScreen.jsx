@@ -21,7 +21,7 @@ import { useAuth } from '../context/AuthContext';
 
 const featureHighlights = [
   { label: 'Mapa vivo', icon: <MapIcon color="primary" fontSize="small" /> },
-  { label: 'Bandeja de links', icon: <BookmarkAddIcon color="primary" fontSize="small" /> },
+  { label: 'Links por revisar', icon: <BookmarkAddIcon color="primary" fontSize="small" /> },
   { label: 'Cerca de ti', icon: <TravelExploreIcon color="primary" fontSize="small" /> },
   { label: 'PWA iPhone', icon: <AutoAwesomeIcon color="primary" fontSize="small" /> },
 ];

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { distanceInMeters } from '../lib/geo';
+import { distanceInMeters, normalizePosition } from '../lib/geo';
 
 export function usePlaceFilters(places, filters, userPosition) {
   return useMemo(() => {
@@ -19,7 +19,7 @@ export function usePlaceFilters(places, filters, userPosition) {
 
     const enriched = filtered.map((place) => ({
       ...place,
-      distance: distanceInMeters(userPosition, { lat: Number(place.lat), lng: Number(place.lng) }),
+      distance: distanceInMeters(userPosition, normalizePosition(place, { lat: Number.NaN, lng: Number.NaN })),
     }));
 
     return enriched.sort((a, b) => {

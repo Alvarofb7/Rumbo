@@ -61,7 +61,7 @@ export default function PlacesPanel({
       <Paper variant="outlined" sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', borderColor: 'rgba(0,97,111,0.12)' }}>
         {[
           ['Guardados', stats.saved],
-          ['Pendientes', stats.pending],
+          ['Por visitar', stats.pending],
           ['Visitados', stats.visited],
         ].map(([label, value], index) => (
           <Box key={label} sx={{ p: 1.25, textAlign: 'center', borderLeft: index ? '1px solid rgba(0,97,111,0.10)' : 0 }}>

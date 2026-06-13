@@ -37,7 +37,8 @@ export default function ProfileDrawer({ stats, places, inbox, firebaseReady, onC
 
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
           <Chip label={`${stats.saved} guardados`} />
-          <Chip label={`${stats.pending} pendientes`} color="warning" variant="outlined" />
+          <Chip label={`${stats.pending} por visitar`} color="warning" variant="outlined" />
+          <Chip label={`${stats.review} por revisar`} color="primary" variant="outlined" />
           <Chip label={`${stats.visited} visitados`} color="success" variant="outlined" />
           <Chip label={`${stats.favorites} favoritos`} color="secondary" variant="outlined" />
         </Stack>
