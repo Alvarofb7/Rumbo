@@ -196,6 +196,27 @@ function extractAddressFromText(value = '') {
   return addressMatch ? cleanText(addressMatch[0]) : '';
 }
 
+function extractSearchResultLinks(html = '') {
+  return [...html.matchAll(/uddg=([^&"']+)/gi)]
+    .map((match) => {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return '';
+      }
+    })
+    .filter((url) => /^https?:\/\//i.test(url))
+    .filter((url) => !url.includes('tripadvisor.') && !url.includes('google.') && !url.includes('duckduckgo.'))
+    .filter((url, index, urls) => urls.indexOf(url) === index)
+    .slice(0, 5);
+}
+
+async function fetchReadablePage(url) {
+  const readerUrl = `https://r.jina.ai/http://${url}`;
+  const fetched = await fetchExpandedUrl(readerUrl);
+  return fetched.ok ? fetched.html : '';
+}
+
 async function searchPublicWeb(basePlace) {
   const query = [basePlace.name, basePlace.zone || basePlace.address, 'restaurante dirección'].filter(Boolean).join(' ');
   if (!query.trim()) return null;
@@ -208,7 +229,16 @@ async function searchPublicWeb(basePlace) {
 
   const snippets = [...fetched.html.matchAll(/class=["']result__snippet["'][^>]*>([\s\S]*?)<\/a>/gi)].map((match) => match[1]);
   const fallbackText = fetched.html.slice(0, 50000);
-  const address = snippets.map(extractAddressFromText).find(Boolean) || extractAddressFromText(fallbackText);
+  let address = snippets.map(extractAddressFromText).find(Boolean) || extractAddressFromText(fallbackText);
+
+  if (!address) {
+    const resultLinks = extractSearchResultLinks(fetched.html);
+    for (const resultLink of resultLinks) {
+      const readablePage = await fetchReadablePage(resultLink);
+      address = extractAddressFromText(readablePage);
+      if (address) break;
+    }
+  }
 
   if (!address) return null;
 
@@ -218,6 +248,35 @@ async function searchPublicWeb(basePlace) {
     zone: basePlace.zone || '',
     source: 'búsqueda web',
   };
+}
+
+function normalizeForMatch(value = '') {
+  return cleanText(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function isBroadPlaceResult(result) {
+  return (
+    ['boundary', 'place'].includes(result.category) ||
+    ['city', 'town', 'village', 'municipality', 'administrative', 'county', 'state'].includes(result.type)
+  );
+}
+
+function isAddressQuery(query) {
+  return /\b(?:C\.|C\/|Calle|Av\.|Avenida|Paseo|Plaza|Pza\.|Ronda|Camino|Carretera)\b/i.test(query) && /\d/.test(query);
+}
+
+function isSpecificEnough(result, basePlace, query) {
+  if (!Number.isFinite(Number(result?.lat)) || !Number.isFinite(Number(result?.lng))) return false;
+  if (isAddressQuery(query)) return true;
+  if (isBroadPlaceResult(result)) return false;
+
+  const resultName = normalizeForMatch(result.name);
+  const baseName = normalizeForMatch(basePlace.name);
+  return Boolean(resultName && baseName && (resultName.includes(baseName) || baseName.includes(resultName)));
 }
 
 async function searchOpenStreetMap(query) {
@@ -246,6 +305,8 @@ async function searchOpenStreetMap(query) {
     address: result.display_name || '',
     zone: getAddressZone(result.address),
     rawAddress: result.address || {},
+    category: result.category || result.class || '',
+    type: result.type || '',
     lat: Number(result.lat),
     lng: Number(result.lon),
   };
@@ -277,6 +338,8 @@ async function reverseOpenStreetMap(coordinates) {
     address: result.display_name || '',
     zone: getAddressZone(result.address),
     rawAddress: result.address || {},
+    category: result.category || result.class || '',
+    type: result.type || '',
     lat: Number(result.lat),
     lng: Number(result.lon),
   };
@@ -300,7 +363,7 @@ async function enrichPlace(basePlace) {
 
   for (const query of [...new Set(queries)]) {
     const result = await searchOpenStreetMap(query);
-    if (result) {
+    if (result && isSpecificEnough(result, basePlace, query)) {
       return {
         ...result,
         address: webResult?.address || result.address,
