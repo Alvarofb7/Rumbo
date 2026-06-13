@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { defaultCenter } from '../data/demoData';
 
 const manualPositionKey = 'rumbo.manualPosition';
+const lastPositionKey = 'rumbo.lastPosition';
 
-function getStoredManualPosition() {
-  const stored = localStorage.getItem(manualPositionKey);
+function getStoredPosition(key) {
+  const stored = localStorage.getItem(key);
   if (!stored) return null;
 
   try {
@@ -15,7 +16,7 @@ function getStoredManualPosition() {
 }
 
 export function useUserLocation() {
-  const [position, setPosition] = useState(getStoredManualPosition() || defaultCenter);
+  const [position, setPosition] = useState(getStoredPosition(manualPositionKey) || getStoredPosition(lastPositionKey) || defaultCenter);
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
 
@@ -35,11 +36,15 @@ export function useUserLocation() {
     setStatus('locating');
     const watchId = navigator.geolocation.watchPosition(
       (result) => {
-        setPosition({
+        const nextPosition = {
           lat: result.coords.latitude,
           lng: result.coords.longitude,
           label: 'Tu ubicación',
-        });
+        };
+
+        localStorage.removeItem(manualPositionKey);
+        localStorage.setItem(lastPositionKey, JSON.stringify(nextPosition));
+        setPosition(nextPosition);
         setStatus('ready');
       },
       (locationError) => {

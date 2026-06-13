@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
+import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet';
 import { Box } from '@mui/material';
 import { defaultCenter } from '../../data/demoData';
 import { getPlaceColor } from '../common/placeUtils';
@@ -14,26 +14,24 @@ function Recenter({ center }) {
   const map = useMap();
 
   useEffect(() => {
-    if (!center?.lat || !center?.lng) return;
+    if (!Number.isFinite(Number(center?.lat)) || !Number.isFinite(Number(center?.lng))) return;
     map.flyTo([center.lat, center.lng], map.getZoom() < 13 ? 14 : map.getZoom(), { duration: 0.6 });
   }, [center, map]);
 
   return null;
 }
 
-function MapEvents({ onCenterChange }) {
-  useMapEvents({
-    moveend(event) {
-      const center = event.target.getCenter();
-      onCenterChange?.({ lat: center.lat, lng: center.lng });
-    },
-  });
-
-  return null;
+function hasValidCoordinate(value) {
+  return value !== '' && value !== null && value !== undefined && Number.isFinite(Number(value));
 }
 
-export default function MapPanel({ places, selectedPlace, userPosition, center, onCenterChange, onSelectPlace }) {
+function hasValidCoordinates(place) {
+  return hasValidCoordinate(place?.lat) && hasValidCoordinate(place?.lng);
+}
+
+export default function MapPanel({ places, selectedPlace, userPosition, center, onSelectPlace }) {
   const safeCenter = center || userPosition || defaultCenter;
+  const visiblePlaces = places.filter(hasValidCoordinates);
 
   return (
     <Box sx={{ width: '100%', height: '100%' }}>
@@ -43,9 +41,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
           url={appleLikeTileLayer.url}
         />
         <Recenter center={safeCenter} />
-        <MapEvents onCenterChange={onCenterChange} />
-
-        {userPosition?.lat && (
+        {hasValidCoordinates(userPosition) && (
           <CircleMarker
             center={[userPosition.lat, userPosition.lng]}
             radius={11}
@@ -60,7 +56,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
           </CircleMarker>
         )}
 
-        {places.map((place) => {
+        {visiblePlaces.map((place) => {
           const selected = selectedPlace?.id === place.id;
           const color = getPlaceColor(place);
 

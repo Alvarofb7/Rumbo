@@ -1,5 +1,3 @@
-import { defaultCenter } from '../data/demoData';
-
 const sourceMatchers = [
   { sourceType: 'instagram', patterns: ['instagram.com'] },
   { sourceType: 'tripadvisor', patterns: ['tripadvisor.'] },
@@ -67,7 +65,7 @@ function inferTags(sourceType, title) {
   return tags.length ? tags : ['Pendiente'];
 }
 
-export function parsePlaceLink(rawUrl, fallbackPosition = defaultCenter) {
+export function parsePlaceLink(rawUrl, fallbackPosition = null) {
   const input = rawUrl.trim();
   if (!input) throw new Error('Pega un enlace válido.');
 
@@ -88,8 +86,8 @@ export function parsePlaceLink(rawUrl, fallbackPosition = defaultCenter) {
     title,
     address: sourceType === 'instagram' ? 'Completa la dirección al guardar' : title,
     zone: '',
-    lat: coordinates.lat,
-    lng: coordinates.lng,
+    lat: coordinates?.lat ?? '',
+    lng: coordinates?.lng ?? '',
     tags: inferTags(sourceType, title),
     rating: 0,
     sourceType,

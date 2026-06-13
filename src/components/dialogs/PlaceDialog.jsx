@@ -108,11 +108,6 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
           </Box>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-            <TextField label="Latitud" value={draft.lat} onChange={(event) => update('lat', event.target.value)} fullWidth />
-            <TextField label="Longitud" value={draft.lng} onChange={(event) => update('lng', event.target.value)} fullWidth />
-          </Stack>
-
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
             <FormControl fullWidth>
               <InputLabel>Origen</InputLabel>
               <Select label="Origen" value={draft.sourceType} onChange={(event) => update('sourceType', event.target.value)}>

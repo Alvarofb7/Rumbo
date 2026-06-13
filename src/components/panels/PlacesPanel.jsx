@@ -14,6 +14,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditIcon from '@mui/icons-material/Edit';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import NearMeIcon from '@mui/icons-material/NearMe';
 import PlaceIcon from '@mui/icons-material/Place';
 import { formatDistance } from '../../lib/geo';
 import { getStatusMeta, RatingText, SourceBadge, TagList, TypeIcon } from '../common/placeUtils';
@@ -35,6 +36,7 @@ export default function PlacesPanel({
   onSelect,
   onEdit,
   onDelete,
+  onDirections,
   onOpenFilters,
 }) {
   const selectedPlaceRef = useRef(null);
@@ -103,11 +105,11 @@ export default function PlacesPanel({
             const selected = selectedPlace?.id === place.id;
             const statusMeta = getStatusMeta(place.status);
 
-	            return (
-	              <Box
-	                key={place.id}
-	                ref={selected ? selectedPlaceRef : null}
-	                role="button"
+            return (
+              <Box
+                key={place.id}
+                ref={selected ? selectedPlaceRef : null}
+                role="button"
                 tabIndex={0}
                 onClick={() => onSelect(place)}
                 onKeyDown={(event) => event.key === 'Enter' && onSelect(place)}
@@ -115,14 +117,14 @@ export default function PlacesPanel({
                   py: 1.4,
                   cursor: 'pointer',
                   outline: 0,
-	                  bgcolor: selected ? 'rgba(0,97,111,0.08)' : 'transparent',
-	                  border: selected ? '1px solid rgba(0,97,111,0.24)' : '1px solid transparent',
-	                  mx: -1,
-	                  px: 1,
-	                  borderRadius: 2,
-	                  transition: 'background-color 160ms ease, border-color 160ms ease',
-	                }}
-	              >
+                  bgcolor: selected ? 'rgba(0,97,111,0.08)' : 'transparent',
+                  border: selected ? '1px solid rgba(0,97,111,0.24)' : '1px solid transparent',
+                  mx: -1,
+                  px: 1,
+                  borderRadius: 2,
+                  transition: 'background-color 160ms ease, border-color 160ms ease',
+                }}
+              >
                 <Stack direction="row" spacing={1.2} alignItems="flex-start">
                   <Box
                     sx={{
@@ -157,6 +159,16 @@ export default function PlacesPanel({
                     </Stack>
                   </Stack>
                   <Stack spacing={0.5}>
+                    <IconButton
+                      size="small"
+                      aria-label={`Ir a ${place.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDirections?.(place);
+                      }}
+                    >
+                      <NearMeIcon fontSize="small" />
+                    </IconButton>
                     <IconButton size="small" onClick={(event) => { event.stopPropagation(); onEdit(place); }}>
                       <EditIcon fontSize="small" />
                     </IconButton>

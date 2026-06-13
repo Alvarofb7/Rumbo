@@ -8,7 +8,6 @@ import {
   BottomNavigation,
   BottomNavigationAction,
   Button,
-  Chip,
   Drawer,
   Fab,
   IconButton,
@@ -34,6 +33,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUserCollection } from '../hooks/useFirestoreCollection';
 import { usePlaceFilters } from '../hooks/usePlaceFilters';
 import { useUserLocation } from '../hooks/useUserLocation';
+import { searchLocation } from '../lib/geo';
 import { parsePlaceLink } from '../lib/linkParser';
 import FilterDrawer from './filters/FilterDrawer';
 import InboxPanel from './panels/InboxPanel';
@@ -68,6 +68,14 @@ const initialFilters = {
   sort: 'nearest',
 };
 
+function hasValidCoordinate(value) {
+  return value !== '' && value !== null && value !== undefined && Number.isFinite(Number(value));
+}
+
+function hasValidCoordinates(place) {
+  return hasValidCoordinate(place?.lat) && hasValidCoordinate(place?.lng);
+}
+
 export default function MainApp() {
   const { user, firebaseReady } = useAuth();
   const theme = useTheme();
@@ -75,7 +83,7 @@ export default function MainApp() {
   const { position, status: locationStatus, error: locationError, setManualPosition } = useUserLocation();
   const placesStore = useUserCollection(user, 'places', demoPlaces);
   const inboxStore = useUserCollection(user, 'inbox', demoInbox);
-  const [tab, setTab] = useState('inbox');
+  const [tab, setTab] = useState('map');
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
   const [mapCenter, setMapCenter] = useState(null);
   const [filters, setFilters] = useState(initialFilters);
@@ -91,7 +99,9 @@ export default function MainApp() {
   const places = placesStore.items;
   const inbox = inboxStore.items;
   const filteredPlaces = usePlaceFilters(places, filters, position);
-  const selectedPlace = places.find((place) => place.id === selectedPlaceId) || filteredPlaces[0] || null;
+  const selectedPlace = places.find((place) => place.id === selectedPlaceId) || null;
+  const mapHeight = tab === 'map' ? '64dvh' : '52dvh';
+  const panelHeight = tab === 'map' ? '36dvh' : '48dvh';
 
   const stats = useMemo(() => {
     return {
@@ -107,7 +117,7 @@ export default function MainApp() {
   }, [tab]);
 
   function openCreatePlace(prefill = null) {
-    setEditingPlace(prefill || { ...emptyPlace, lat: position.lat, lng: position.lng });
+    setEditingPlace(prefill || { ...emptyPlace });
     setPlaceDialogOpen(true);
   }
 
@@ -116,25 +126,61 @@ export default function MainApp() {
     setPlaceDialogOpen(true);
   }
 
-  async function handleSavePlace(place) {
-    const payload = {
-      ...place,
-      lat: Number(place.lat || position.lat),
-      lng: Number(place.lng || position.lng),
-      rating: Number(place.rating || 0),
-      tags: place.tags || [],
+  async function buildPlacePayload(place) {
+    let coordinates = hasValidCoordinates(place)
+      ? {
+          lat: Number(place.lat),
+          lng: Number(place.lng),
+        }
+      : { lat: Number.NaN, lng: Number.NaN };
+    let approximate = false;
+
+    if (!hasValidCoordinates(coordinates)) {
+      const query = [place.address, place.name, place.zone].filter(Boolean).join(', ');
+
+      if (query.trim()) {
+        try {
+          const [result] = await searchLocation(query);
+          if (result) {
+            coordinates = { lat: result.lat, lng: result.lng };
+          }
+        } catch {
+          coordinates = { lat: Number.NaN, lng: Number.NaN };
+        }
+      }
+    }
+
+    if (!hasValidCoordinates(coordinates)) {
+      coordinates = { lat: position.lat, lng: position.lng };
+      approximate = true;
+    }
+
+    return {
+      payload: {
+        ...place,
+        lat: coordinates.lat,
+        lng: coordinates.lng,
+        rating: Number(place.rating || 0),
+        tags: place.tags || [],
+      },
+      approximate,
     };
+  }
+
+  async function handleSavePlace(place) {
+    const { payload, approximate } = await buildPlacePayload(place);
 
     if (payload.id) {
       await placesStore.updateItem(payload.id, payload);
       setSelectedPlaceId(payload.id);
-      setToast('Lugar actualizado.');
+      setToast(`Lugar actualizado${approximate ? ' con ubicación aproximada' : ''}.`);
     } else {
       const created = await placesStore.addItem(payload);
       setSelectedPlaceId(created.id);
-      setToast('Lugar guardado.');
+      setToast(`Lugar guardado${approximate ? ' con ubicación aproximada' : ''}.`);
     }
 
+    setMapCenter({ lat: payload.lat, lng: payload.lng });
     setPlaceDialogOpen(false);
     setTab('map');
   }
@@ -146,7 +192,7 @@ export default function MainApp() {
   }
 
   async function handleImportLink(url) {
-    const candidate = parsePlaceLink(url, mapCenter || position);
+    const candidate = parsePlaceLink(url);
     await inboxStore.addItem(candidate);
     setLinkDialogOpen(false);
     setTab('inbox');
@@ -158,8 +204,8 @@ export default function MainApp() {
       name: item.title,
       address: item.address,
       zone: item.zone,
-      lat: item.lat || position.lat,
-      lng: item.lng || position.lng,
+      lat: item.lat || '',
+      lng: item.lng || '',
       tags: item.tags || [],
       rating: item.rating || 0,
       status: 'wishlist',
@@ -168,11 +214,13 @@ export default function MainApp() {
       sourceUrl: item.sourceUrl,
       imageUrl: item.imageUrl || '',
     };
-    const created = await placesStore.addItem(place);
+    const { payload, approximate } = await buildPlacePayload(place);
+    const created = await placesStore.addItem(payload);
     await inboxStore.deleteItem(item.id);
     setSelectedPlaceId(created.id);
+    setMapCenter({ lat: payload.lat, lng: payload.lng });
     setTab('map');
-    setToast('Recomendación guardada en el mapa.');
+    setToast(`Recomendación guardada en el mapa${approximate ? ' con ubicación aproximada' : ''}.`);
   }
 
   async function handleEditInboxItem(item) {
@@ -181,8 +229,8 @@ export default function MainApp() {
       name: item.title,
       address: item.address,
       zone: item.zone,
-      lat: item.lat || position.lat,
-      lng: item.lng || position.lng,
+      lat: item.lat || '',
+      lng: item.lng || '',
       tags: item.tags || [],
       rating: item.rating || 0,
       notes: item.notes || '',
@@ -208,9 +256,19 @@ export default function MainApp() {
   }
 
   function selectPlace(place, options = {}) {
+    if (!hasValidCoordinates(place)) return;
     setSelectedPlaceId(place.id);
     setMapCenter({ lat: Number(place.lat), lng: Number(place.lng) });
     if (options.openMapTab !== false) setTab('map');
+  }
+
+  function openDirections(place) {
+    if (!hasValidCoordinates(place)) return;
+
+    const lat = Number(place.lat);
+    const lng = Number(place.lng);
+    const label = encodeURIComponent(place.name || 'Destino');
+    window.open(`https://maps.apple.com/?daddr=${lat},${lng}&q=${label}`, '_blank', 'noopener,noreferrer');
   }
 
   const panel = {
@@ -226,6 +284,7 @@ export default function MainApp() {
         }}
         onEdit={openEditPlace}
         onDelete={handleDeletePlace}
+        onDirections={openDirections}
         onOpenFilters={() => setFiltersOpen(true)}
       />
     ),
@@ -251,6 +310,7 @@ export default function MainApp() {
         }}
         onEdit={openEditPlace}
         onDelete={handleDeletePlace}
+        onDirections={openDirections}
         onOpenFilters={() => setFiltersOpen(true)}
       />
     ),
@@ -267,13 +327,12 @@ export default function MainApp() {
           height: '100%',
         }}
       >
-        <Box sx={{ position: 'relative', minHeight: 0, height: { xs: '46dvh', md: '100dvh' } }}>
+        <Box sx={{ position: 'relative', minHeight: 0, height: { xs: mapHeight, md: '100dvh' } }}>
           <MapPanel
             places={filteredPlaces}
             selectedPlace={selectedPlace}
             userPosition={position}
-            center={mapCenter || (selectedPlace ? { lat: Number(selectedPlace.lat), lng: Number(selectedPlace.lng) } : position)}
-            onCenterChange={setMapCenter}
+            center={mapCenter || position}
             onSelectPlace={(place) => {
               selectPlace(place);
             }}
@@ -348,10 +407,10 @@ export default function MainApp() {
                 <FilterListIcon />
               </IconButton>
             </Tooltip>
-              <Tooltip title={locationStatus === 'ready' ? 'Mi ubicación' : 'Referencia de cercanía'}>
-                <IconButton onClick={() => setMapCenter(position)} sx={{ bgcolor: 'background.paper', boxShadow: '0 8px 20px rgba(6,42,48,0.14)' }}>
-                  <TravelExploreIcon />
-                </IconButton>
+            <Tooltip title={locationStatus === 'ready' ? 'Mi ubicación' : 'Referencia de cercanía'}>
+              <IconButton onClick={() => setMapCenter(position)} sx={{ bgcolor: 'background.paper', boxShadow: '0 8px 20px rgba(6,42,48,0.14)' }}>
+                <TravelExploreIcon />
+              </IconButton>
             </Tooltip>
           </Stack>
 
@@ -376,7 +435,7 @@ export default function MainApp() {
           elevation={0}
           sx={{
             minHeight: 0,
-            height: { xs: '54dvh', md: '100dvh' },
+            height: { xs: panelHeight, md: '100dvh' },
             borderRadius: { xs: '18px 18px 0 0', md: 0 },
             borderLeft: { md: '1px solid rgba(0,97,111,0.12)' },
             mt: { xs: -2, md: 0 },
@@ -402,11 +461,6 @@ export default function MainApp() {
           </Box>
 
           <Box sx={{ borderTop: '1px solid rgba(0,97,111,0.10)', bgcolor: 'background.paper', pb: 'env(safe-area-inset-bottom)' }}>
-            <Stack direction="row" spacing={1} sx={{ px: 2, py: 1, display: { xs: 'flex', md: 'none' } }}>
-              <Chip size="small" label={`${stats.saved} guardados`} />
-              <Chip size="small" color="warning" variant="outlined" label={`${stats.pending} pendientes`} />
-              <Chip size="small" color="success" variant="outlined" label={`${stats.visited} visitados`} />
-            </Stack>
             <BottomNavigation value={tab} onChange={(_, value) => setTab(value)} showLabels>
               <BottomNavigationAction label="Mapa" value="map" icon={<MapIcon />} />
               <BottomNavigationAction
@@ -434,7 +488,12 @@ export default function MainApp() {
           if (place.inboxId) await inboxStore.deleteItem(place.inboxId);
         }}
       />
-      <LinkImportDialog open={linkDialogOpen} onClose={() => setLinkDialogOpen(false)} onImport={handleImportLink} />
+      <LinkImportDialog
+        open={linkDialogOpen}
+        onClose={() => setLinkDialogOpen(false)}
+        onImport={handleImportLink}
+        onSearchSelect={handleSearchSelect}
+      />
       <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={handleSearchSelect} />
       <FilterDrawer open={filtersOpen} filters={filters} setFilters={setFilters} onClose={() => setFiltersOpen(false)} places={places} />
       <Drawer anchor="right" open={profileOpen} onClose={() => setProfileOpen(false)}>
