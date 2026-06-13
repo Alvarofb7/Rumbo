@@ -50,6 +50,7 @@ function cleanName(value = '') {
 function normalizeCityName(value = '') {
   return cleanText(value)
     .replace(/\bSeville\b/gi, 'Sevilla')
+    .replace(/\bSpain\b/gi, 'España')
     .replace(/\bProvince of\b.*$/i, '')
     .trim();
 }
@@ -154,9 +155,9 @@ function parseMetadata(html) {
   };
 }
 
-async function fetchExpandedUrl(url) {
+async function fetchExpandedUrl(url, { timeoutMs = 9000 } = {}) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 9000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, {
@@ -187,13 +188,32 @@ function stripTags(value = '') {
   return decodeHtml(value.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
 }
 
+function cleanExtractedAddress(value = '') {
+  return normalizeCityName(
+    cleanText(value)
+      .replace(/\s+(?:Opening hours|Phone|Website|Email|Directions?):.*$/i, '')
+      .replace(/\s+Save Review Share.*$/i, '')
+      .replace(/\s+,/g, ',')
+      .replace(/,\s*,/g, ',')
+      .trim(),
+  );
+}
+
 function extractAddressFromText(value = '') {
   const text = stripTags(value);
+  const labelledAddressMatch = text.match(
+    /\bAddress:\s*([^\n]{3,180}?)(?:\s+(?:Opening hours|Phone|Website|Email|Directions?|Similar places|Nearby):|$)/i,
+  );
+  if (labelledAddressMatch) return cleanExtractedAddress(labelledAddressMatch[1]);
+
+  const locatedAtMatch = text.match(/\blocated at\s+([^.!?]{3,180}?\b(?:Spain|España)\b)/i);
+  if (locatedAtMatch) return cleanExtractedAddress(locatedAtMatch[1]);
+
   const addressMatch = text.match(
-    /\b(?:C\.|C\/|Calle|Av\.|Avenida|Paseo|Plaza|Pza\.|Ronda|Camino|Carretera)\s+[^:;()|]{3,80}?,\s*\d+[A-Za-z]?\b/i,
+    /\b(?:C\.|C\/|Calle|Av\.|Avenida|Paseo|Plaza|Pza\.|Ronda|Camino|Carretera)\s+[^:;()|\n]{3,100}?,\s*\d+[A-Za-z]?(?:,\s*\d{5}\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]+)?\b/i,
   );
 
-  return addressMatch ? cleanText(addressMatch[0]) : '';
+  return addressMatch ? cleanExtractedAddress(addressMatch[0]) : '';
 }
 
 function extractSearchResultLinks(html = '') {
@@ -211,20 +231,78 @@ function extractSearchResultLinks(html = '') {
     .slice(0, 5);
 }
 
-async function fetchReadablePage(url) {
+async function fetchReadablePage(url, timeoutMs = 5000) {
   const readerUrl = `https://r.jina.ai/http://${url}`;
-  const fetched = await fetchExpandedUrl(readerUrl);
+  const fetched = await fetchExpandedUrl(readerUrl, { timeoutMs });
   return fetched.ok ? fetched.html : '';
 }
 
+function appendZone(address = '', zone = '') {
+  if (!address || !zone) return address || zone;
+  return normalizeForMatch(address).includes(normalizeForMatch(zone)) ? address : [address, zone].join(', ');
+}
+
+function slugify(value = '') {
+  return cleanText(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function getEnglishCitySlug(value = '') {
+  const normalizedCity = normalizeForMatch(normalizeCityName(value));
+  if (normalizedCity === 'sevilla') return 'seville';
+  return slugify(value);
+}
+
+function getLikelyPublicPages(basePlace) {
+  const placeSlug = normalizeForMatch(basePlace.name);
+  const citySlug = getEnglishCitySlug(basePlace.zone || basePlace.address);
+  if (!placeSlug || placeSlug.length < 3) return [];
+
+  return [
+    `https://${placeSlug}.menustic.com/`,
+    citySlug ? `https://intravel.net/${citySlug}/restaurants-cafes/${placeSlug}` : '',
+  ].filter(Boolean);
+}
+
+async function searchLikelyPublicPages(basePlace) {
+  const likelyPages = getLikelyPublicPages(basePlace);
+  if (!likelyPages.length) return null;
+
+  const pageResults = await Promise.allSettled(
+    likelyPages.map(async (pageUrl) => {
+      const readablePage = await fetchReadablePage(pageUrl, 3500);
+      const address = extractAddressFromText(readablePage);
+      return address ? { address, pageUrl } : null;
+    }),
+  );
+
+  const match = pageResults.find((result) => result.status === 'fulfilled' && result.value?.address)?.value;
+  if (!match) return null;
+
+  const zone = normalizeCityName(basePlace.zone || '');
+  return {
+    name: basePlace.name,
+    address: appendZone(match.address, zone),
+    zone,
+    source: 'web pública',
+  };
+}
+
 async function searchPublicWeb(basePlace) {
+  const publicPageResult = await searchLikelyPublicPages(basePlace);
+  if (publicPageResult) return publicPageResult;
+
   const query = [basePlace.name, basePlace.zone || basePlace.address, 'restaurante dirección'].filter(Boolean).join(' ');
   if (!query.trim()) return null;
 
   const url = new URL('https://duckduckgo.com/html/');
   url.searchParams.set('q', query);
 
-  const fetched = await fetchExpandedUrl(url.toString());
+  const fetched = await fetchExpandedUrl(url.toString(), { timeoutMs: 5000 });
   if (!fetched.ok || !fetched.html) return null;
 
   const snippets = [...fetched.html.matchAll(/class=["']result__snippet["'][^>]*>([\s\S]*?)<\/a>/gi)].map((match) => match[1]);
@@ -234,7 +312,7 @@ async function searchPublicWeb(basePlace) {
   if (!address) {
     const resultLinks = extractSearchResultLinks(fetched.html);
     for (const resultLink of resultLinks) {
-      const readablePage = await fetchReadablePage(resultLink);
+      const readablePage = await fetchReadablePage(resultLink, 3000);
       address = extractAddressFromText(readablePage);
       if (address) break;
     }
@@ -244,7 +322,7 @@ async function searchPublicWeb(basePlace) {
 
   return {
     name: basePlace.name,
-    address: [address, basePlace.zone].filter(Boolean).join(', '),
+    address: appendZone(address, basePlace.zone),
     zone: basePlace.zone || '',
     source: 'búsqueda web',
   };
@@ -266,7 +344,11 @@ function isBroadPlaceResult(result) {
 }
 
 function isAddressQuery(query) {
-  return /\b(?:C\.|C\/|Calle|Av\.|Avenida|Paseo|Plaza|Pza\.|Ronda|Camino|Carretera)\b/i.test(query) && /\d/.test(query);
+  const hasStreetPrefix = /(?:\bC\.|\bC\/|\bCalle\b|\bAv\.|\bAvenida\b|\bPaseo\b|\bPlaza\b|\bPza\.|\bRonda\b|\bCamino\b|\bCarretera\b)/i.test(
+    query,
+  );
+  const hasStreetNumber = /\b[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ'.\s-]{2,80},\s*\d+[A-Za-z]?\b/i.test(query);
+  return (hasStreetPrefix || hasStreetNumber) && /\d/.test(query);
 }
 
 function isSpecificEnough(result, basePlace, query) {
@@ -356,6 +438,7 @@ async function enrichPlace(basePlace) {
     [basePlace.name, basePlace.zone].filter(Boolean).join(' '),
     [basePlace.name, basePlace.address].filter(Boolean).join(' '),
     [basePlace.name, normalizeCityName(basePlace.zone)].filter(Boolean).join(' '),
+    [basePlace.name, webResult?.address].filter(Boolean).join(' '),
     webResult?.address,
     [webResult?.address, normalizeCityName(basePlace.zone)].filter(Boolean).join(' '),
     basePlace.name,
