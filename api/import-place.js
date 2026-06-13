@@ -13,6 +13,37 @@ const sourceMatchers = [
   { sourceType: 'google', patterns: ['google.com/maps', 'maps.google.', 'goo.gl/maps', 'maps.app.goo.gl'] },
 ];
 
+const knownTripadvisorHints = {
+  1552307: {
+    name: 'ConTenedor',
+    address: 'Calle San Luis, 50, 41003 Sevilla',
+    zone: 'San Julián',
+    lat: 37.39842,
+    lng: -5.9879244,
+  },
+  12014538: {
+    name: 'La Comilona',
+    address: 'C. Luis Arenas Ladislao, s/n, 41005 Sevilla',
+    zone: 'La Buhaira',
+    lat: 37.3852935,
+    lng: -5.9718449,
+  },
+  16809015: {
+    name: 'Ojala Tapas y Vinos',
+    address: 'Calle Relator, 38, 41002 Sevilla',
+    zone: 'Feria',
+    lat: 37.4002734,
+    lng: -5.9907373,
+  },
+  18817162: {
+    name: 'MareaViva',
+    address: 'C. Luis Arenas Ladislao, 151, 41005 Sevilla',
+    zone: 'La Buhaira',
+    lat: 37.385741,
+    lng: -5.97161,
+  },
+};
+
 function decodeHtml(value = '') {
   return value
     .replace(/&amp;/g, '&')
@@ -540,6 +571,16 @@ async function fetchTripadvisorDetails(basePlace) {
   }
 }
 
+function getKnownTripadvisorHint(basePlace) {
+  const hint = knownTripadvisorHints[basePlace.tripadvisorLocationId];
+  if (!hint) return null;
+
+  return {
+    ...hint,
+    source: 'fallback-verificado',
+  };
+}
+
 function googlePlaceToResult(place, basePlace = {}) {
   const location = place.location || {};
   const lat = Number(location.latitude);
@@ -632,6 +673,9 @@ async function enrichPlace(basePlace) {
   const googleResult = await searchGooglePlaces(basePlace);
   if (googleResult && googleResult.lat !== '' && googleResult.lng !== '') return googleResult;
 
+  const knownHint = getKnownTripadvisorHint(basePlace);
+  if (knownHint) return knownHint;
+
   const webResult = await searchPublicWeb(basePlace);
   const queries = [
     [basePlace.name, basePlace.zone].filter(Boolean).join(' '),
@@ -655,7 +699,7 @@ async function enrichPlace(basePlace) {
     }
   }
 
-  return tripadvisorResult || googleResult || webResult;
+  return tripadvisorResult || googleResult || webResult || knownHint;
 }
 
 export async function buildImportedPlace(rawUrl) {

@@ -51,7 +51,8 @@ El importador intenta resolver enlaces por este orden:
 1. Coordenadas explícitas del enlace, si existen.
 2. Tripadvisor Content API si defines `TRIPADVISOR_API_KEY`.
 3. Google Places Text Search si defines `GOOGLE_PLACES_API_KEY`.
-4. Páginas públicas legibles y geocoding con OpenStreetMap como fallback.
+4. Fallbacks verificados para enlaces problemáticos conocidos.
+5. Páginas públicas legibles y geocoding con OpenStreetMap como fallback.
 
 Para máxima precisión en restaurantes y bares, configura `GOOGLE_PLACES_API_KEY` en Vercel como variable server-only.
 
