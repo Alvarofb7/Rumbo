@@ -47,6 +47,13 @@ function cleanName(value = '') {
     .trim();
 }
 
+function normalizeCityName(value = '') {
+  return cleanText(value)
+    .replace(/\bSeville\b/gi, 'Sevilla')
+    .replace(/\bProvince of\b.*$/i, '')
+    .trim();
+}
+
 function normalizeUrl(rawUrl) {
   const input = rawUrl.trim();
   if (!input) throw new Error('Pega un enlace válido.');
@@ -120,7 +127,7 @@ function parseTripadvisorUrl(url) {
   const withoutExtension = path.replace(/\.html?$/i, '');
   const afterReviews = withoutExtension.split(/-Reviews-/i)[1] || withoutExtension;
   const [rawName, rawCity = ''] = afterReviews.split('-');
-  const city = cleanText(rawCity).replace(/\bProvince of\b.*$/i, '').trim();
+  const city = normalizeCityName(rawCity);
 
   return {
     name: cleanName(rawName),
@@ -176,6 +183,43 @@ async function fetchExpandedUrl(url) {
   }
 }
 
+function stripTags(value = '') {
+  return decodeHtml(value.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+function extractAddressFromText(value = '') {
+  const text = stripTags(value);
+  const addressMatch = text.match(
+    /\b(?:C\.|C\/|Calle|Av\.|Avenida|Paseo|Plaza|Pza\.|Ronda|Camino|Carretera)\s+[^:;()|]{3,80}?,\s*\d+[A-Za-z]?\b/i,
+  );
+
+  return addressMatch ? cleanText(addressMatch[0]) : '';
+}
+
+async function searchPublicWeb(basePlace) {
+  const query = [basePlace.name, basePlace.zone || basePlace.address, 'restaurante dirección'].filter(Boolean).join(' ');
+  if (!query.trim()) return null;
+
+  const url = new URL('https://duckduckgo.com/html/');
+  url.searchParams.set('q', query);
+
+  const fetched = await fetchExpandedUrl(url.toString());
+  if (!fetched.ok || !fetched.html) return null;
+
+  const snippets = [...fetched.html.matchAll(/class=["']result__snippet["'][^>]*>([\s\S]*?)<\/a>/gi)].map((match) => match[1]);
+  const fallbackText = fetched.html.slice(0, 50000);
+  const address = snippets.map(extractAddressFromText).find(Boolean) || extractAddressFromText(fallbackText);
+
+  if (!address) return null;
+
+  return {
+    name: basePlace.name,
+    address: [address, basePlace.zone].filter(Boolean).join(', '),
+    zone: basePlace.zone || '',
+    source: 'búsqueda web',
+  };
+}
+
 async function searchOpenStreetMap(query) {
   if (!query.trim()) return null;
 
@@ -201,6 +245,7 @@ async function searchOpenStreetMap(query) {
     name: result.name || result.display_name?.split(',')[0] || '',
     address: result.display_name || '',
     zone: getAddressZone(result.address),
+    rawAddress: result.address || {},
     lat: Number(result.lat),
     lng: Number(result.lon),
   };
@@ -231,6 +276,7 @@ async function reverseOpenStreetMap(coordinates) {
     name: result.name || '',
     address: result.display_name || '',
     zone: getAddressZone(result.address),
+    rawAddress: result.address || {},
     lat: Number(result.lat),
     lng: Number(result.lon),
   };
@@ -242,18 +288,29 @@ async function enrichPlace(basePlace) {
     if (reverseResult) return reverseResult;
   }
 
+  const webResult = await searchPublicWeb(basePlace);
   const queries = [
     [basePlace.name, basePlace.zone].filter(Boolean).join(' '),
     [basePlace.name, basePlace.address].filter(Boolean).join(' '),
+    [basePlace.name, normalizeCityName(basePlace.zone)].filter(Boolean).join(' '),
+    webResult?.address,
+    [webResult?.address, normalizeCityName(basePlace.zone)].filter(Boolean).join(' '),
     basePlace.name,
   ].filter(Boolean);
 
   for (const query of [...new Set(queries)]) {
     const result = await searchOpenStreetMap(query);
-    if (result) return result;
+    if (result) {
+      return {
+        ...result,
+        address: webResult?.address || result.address,
+        zone: getAddressZone(result.rawAddress) || basePlace.zone || webResult?.zone || result.zone,
+        source: webResult?.source || 'geocoding',
+      };
+    }
   }
 
-  return null;
+  return webResult;
 }
 
 export async function buildImportedPlace(rawUrl) {

@@ -42,7 +42,7 @@ export default function PlacesPanel({
   const selectedPlaceRef = useRef(null);
 
   useEffect(() => {
-    selectedPlaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    selectedPlaceRef.current?.scrollIntoView({ behavior: 'auto', block: 'nearest' });
   }, [selectedPlace?.id]);
 
   return (

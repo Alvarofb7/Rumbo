@@ -24,6 +24,8 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import InboxIcon from '@mui/icons-material/Inbox';
 import LinkIcon from '@mui/icons-material/Link';
 import MapIcon from '@mui/icons-material/Map';
+import FullscreenIcon from '@mui/icons-material/Fullscreen';
+import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
 import RouteIcon from '@mui/icons-material/Route';
 import SearchIcon from '@mui/icons-material/Search';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
@@ -94,6 +96,7 @@ export default function MainApp() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [toast, setToast] = useState('');
   const panelScrollRef = useRef(null);
 
@@ -101,8 +104,8 @@ export default function MainApp() {
   const inbox = inboxStore.items;
   const filteredPlaces = usePlaceFilters(places, filters, position);
   const selectedPlace = places.find((place) => place.id === selectedPlaceId) || null;
-  const mapHeight = tab === 'map' ? '64dvh' : '52dvh';
-  const panelHeight = tab === 'map' ? '36dvh' : '48dvh';
+  const mapHeight = panelCollapsed ? 'calc(100dvh - 74px)' : tab === 'map' ? '64dvh' : '52dvh';
+  const panelHeight = panelCollapsed ? '74px' : tab === 'map' ? '36dvh' : '48dvh';
 
   const stats = useMemo(() => {
     return {
@@ -127,6 +130,7 @@ export default function MainApp() {
 
   function changeTab(nextTab) {
     if (nextTab !== tab) setToast('');
+    setPanelCollapsed(false);
     setTab(nextTab);
   }
 
@@ -163,7 +167,8 @@ export default function MainApp() {
     return null;
   }
 
-  async function buildPlacePayload(place) {
+  async function buildPlacePayload(place, options = {}) {
+    const allowCurrentFallback = options.allowCurrentFallback ?? (!place.address?.trim() && !place.sourceUrl);
     let coordinates = hasValidCoordinates(place)
       ? {
           lat: Number(place.lat),
@@ -180,9 +185,13 @@ export default function MainApp() {
       }
     }
 
-    if (!hasValidCoordinates(coordinates)) {
+    if (!hasValidCoordinates(coordinates) && allowCurrentFallback) {
       coordinates = { lat: position.lat, lng: position.lng };
       approximate = true;
+    }
+
+    if (!hasValidCoordinates(coordinates)) {
+      throw new Error('No he podido ubicar este lugar. Elige un resultado en "Buscar sitio en el mapa" antes de guardarlo.');
     }
 
     return {
@@ -200,7 +209,16 @@ export default function MainApp() {
   }
 
   async function handleSavePlace(place) {
-    const { payload, approximate } = await buildPlacePayload(place);
+    let result;
+
+    try {
+      result = await buildPlacePayload(place);
+    } catch (error) {
+      setToast(error.message);
+      return false;
+    }
+
+    const { payload, approximate } = result;
 
     if (payload.id) {
       await placesStore.updateItem(payload.id, payload);
@@ -214,7 +232,9 @@ export default function MainApp() {
 
     setMapCenter({ lat: payload.lat, lng: payload.lng });
     setPlaceDialogOpen(false);
+    setPanelCollapsed(false);
     setTab('map');
+    return true;
   }
 
   async function handleDeletePlace(placeId) {
@@ -227,6 +247,7 @@ export default function MainApp() {
     const candidate = await importPlaceFromUrl(url);
     await inboxStore.addItem(candidate);
     setLinkDialogOpen(false);
+    setPanelCollapsed(false);
     setTab('inbox');
     setToast('Enlace analizado y enviado a Revisar.');
   }
@@ -247,11 +268,21 @@ export default function MainApp() {
       resolvedUrl: item.resolvedUrl || '',
       imageUrl: item.imageUrl || '',
     };
-    const { payload, approximate } = await buildPlacePayload(place);
+    let result;
+
+    try {
+      result = await buildPlacePayload(place, { allowCurrentFallback: false });
+    } catch (error) {
+      setToast(error.message);
+      return;
+    }
+
+    const { payload, approximate } = result;
     const created = await placesStore.addItem(payload);
     await inboxStore.deleteItem(item.id);
     setSelectedPlaceId(created.id);
     setMapCenter({ lat: payload.lat, lng: payload.lng });
+    setPanelCollapsed(false);
     setTab('map');
     setToast(`Recomendación guardada en el mapa${approximate ? ' con ubicación aproximada' : ''}.`);
   }
@@ -287,6 +318,7 @@ export default function MainApp() {
       setToast(`${result.name} será tu referencia de cercanía.`);
     }
     setTab('map');
+    setPanelCollapsed(false);
   }
 
   function selectPlace(place, options = {}) {
@@ -294,6 +326,7 @@ export default function MainApp() {
     setSelectedPlaceId(place.id);
     setMapCenter({ lat: Number(place.lat), lng: Number(place.lng) });
     if (options.openMapTab !== false) setTab('map');
+    setPanelCollapsed(false);
   }
 
   function openDirections(place) {
@@ -308,6 +341,7 @@ export default function MainApp() {
   function openZone(zone) {
     setFilters((current) => ({ ...current, zone, sort: zone ? 'zone' : 'nearest' }));
     setTab('map');
+    setPanelCollapsed(false);
     setToast(zone ? `Mostrando lugares de ${zone}.` : 'Mostrando todas las zonas.');
   }
 
@@ -373,6 +407,7 @@ export default function MainApp() {
             selectedPlace={selectedPlace}
             userPosition={position}
             center={mapCenter || position}
+            onDirections={openDirections}
             onSelectPlace={(place) => {
               selectPlace(place);
             }}
@@ -442,6 +477,14 @@ export default function MainApp() {
           </AppBar>
 
           <Stack sx={{ position: 'absolute', right: 12, top: 132, gap: 1 }}>
+            <Tooltip title={panelCollapsed ? 'Mostrar panel' : 'Ver solo mapa'}>
+              <IconButton
+                onClick={() => setPanelCollapsed((current) => !current)}
+                sx={{ bgcolor: 'background.paper', boxShadow: '0 8px 20px rgba(6,42,48,0.14)' }}
+              >
+                {panelCollapsed ? <FullscreenExitIcon /> : <FullscreenIcon />}
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Filtros">
               <IconButton onClick={() => setFiltersOpen(true)} sx={{ bgcolor: 'background.paper', boxShadow: '0 8px 20px rgba(6,42,48,0.14)' }}>
                 <FilterListIcon />
@@ -485,7 +528,7 @@ export default function MainApp() {
             gridTemplateRows: 'minmax(0, 1fr) auto',
           }}
         >
-          <Box ref={panelScrollRef} sx={{ overflow: 'auto', pt: { xs: 1, md: 2 }, pb: 1 }}>
+          <Box ref={panelScrollRef} sx={{ display: panelCollapsed ? 'none' : 'block', overflow: 'auto', pt: { xs: 1, md: 2 }, pb: 1 }}>
             {!isDesktop && <Box sx={{ width: 44, height: 5, borderRadius: 99, bgcolor: 'divider', mx: 'auto', mb: 1.5 }} />}
             {locationStatus !== 'ready' && locationError && (
               <Alert severity={locationStatus === 'manual' ? 'success' : 'info'} sx={{ mx: 2, mb: 1.5 }}>
@@ -501,7 +544,30 @@ export default function MainApp() {
           </Box>
 
           <Box sx={{ borderTop: '1px solid rgba(0,97,111,0.10)', bgcolor: 'background.paper', pb: 'env(safe-area-inset-bottom)' }}>
-            <BottomNavigation value={tab} onChange={(_, value) => changeTab(value)} showLabels>
+            <BottomNavigation
+              value={panelCollapsed ? null : tab}
+              onChange={(_, value) => changeTab(value)}
+              showLabels
+              sx={{
+                '& .MuiBottomNavigationAction-root': {
+                  mx: 0.35,
+                  my: 0.55,
+                  minWidth: 0,
+                  borderRadius: 2,
+                  color: 'text.secondary',
+                  transition: 'none',
+                },
+                '& .Mui-selected': {
+                  bgcolor: 'primary.light',
+                  color: 'primary.dark',
+                  fontWeight: 800,
+                },
+                '& .MuiBottomNavigationAction-label': {
+                  fontSize: 12,
+                  transition: 'none',
+                },
+              }}
+            >
               <BottomNavigationAction label="Mapa" value="map" icon={<MapIcon />} />
               <BottomNavigationAction label="Lugares" value="saved" icon={<BookmarkBorderIcon />} />
               <BottomNavigationAction
@@ -524,8 +590,8 @@ export default function MainApp() {
         place={editingPlace}
         onClose={() => setPlaceDialogOpen(false)}
         onSave={async (place) => {
-          await handleSavePlace(place);
-          if (place.inboxId) await inboxStore.deleteItem(place.inboxId);
+          const saved = await handleSavePlace(place);
+          if (saved && place.inboxId) await inboxStore.deleteItem(place.inboxId);
         }}
       />
       <LinkImportDialog

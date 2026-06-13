@@ -43,6 +43,58 @@ textarea {
   font-size: 10px;
 }
 
+.leaflet-popup-content-wrapper {
+  border-radius: 14px;
+  box-shadow: 0 16px 42px rgba(6, 42, 48, 0.18);
+}
+
+.leaflet-popup-content {
+  margin: 14px;
+}
+
+.rumbo-map-popup {
+  display: grid;
+  gap: 7px;
+  min-width: 210px;
+  color: #062a30;
+}
+
+.rumbo-map-popup strong {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.rumbo-map-popup span,
+.rumbo-map-popup p {
+  margin: 0;
+  color: #607176;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.rumbo-map-popup-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rumbo-map-popup-meta span {
+  padding: 4px 7px;
+  border-radius: 8px;
+  background: rgba(0, 97, 111, 0.08);
+  color: #00616f;
+  font-weight: 700;
+}
+
+.rumbo-map-popup button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 9px;
+  background: #00616f;
+  color: #ffffff;
+  font-weight: 800;
+}
+
 .rumbo-map-pin {
   display: grid;
   width: 22px;

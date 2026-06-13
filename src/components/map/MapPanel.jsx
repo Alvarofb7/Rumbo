@@ -1,13 +1,13 @@
 import { useEffect } from 'react';
-import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet';
+import { CircleMarker, MapContainer, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet';
 import { Box } from '@mui/material';
 import { defaultCenter } from '../../data/demoData';
-import { getPlaceColor } from '../common/placeUtils';
+import { formatDistance } from '../../lib/geo';
+import { getPlaceColor, getStatusMeta } from '../common/placeUtils';
 
-const appleLikeTileLayer = {
-  url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  attribution:
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+const localNameTileLayer = {
+  url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 };
 
 function Recenter({ center }) {
@@ -15,7 +15,7 @@ function Recenter({ center }) {
 
   useEffect(() => {
     if (!Number.isFinite(Number(center?.lat)) || !Number.isFinite(Number(center?.lng))) return;
-    map.flyTo([center.lat, center.lng], map.getZoom() < 13 ? 14 : map.getZoom(), { duration: 0.6 });
+    map.flyTo([center.lat, center.lng], map.getZoom() < 13 ? 14 : map.getZoom(), { duration: 0.25 });
   }, [center, map]);
 
   return null;
@@ -29,7 +29,7 @@ function hasValidCoordinates(place) {
   return hasValidCoordinate(place?.lat) && hasValidCoordinate(place?.lng);
 }
 
-export default function MapPanel({ places, selectedPlace, userPosition, center, onSelectPlace }) {
+export default function MapPanel({ places, selectedPlace, userPosition, center, onDirections, onSelectPlace }) {
   const safeCenter = center || userPosition || defaultCenter;
   const visiblePlaces = places.filter(hasValidCoordinates);
 
@@ -37,8 +37,8 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
     <Box sx={{ width: '100%', height: '100%' }}>
       <MapContainer center={[safeCenter.lat, safeCenter.lng]} zoom={14} zoomControl={false} attributionControl>
         <TileLayer
-          attribution={appleLikeTileLayer.attribution}
-          url={appleLikeTileLayer.url}
+          attribution={localNameTileLayer.attribution}
+          url={localNameTileLayer.url}
         />
         <Recenter center={safeCenter} />
         {hasValidCoordinates(userPosition) && (
@@ -59,6 +59,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
         {visiblePlaces.map((place) => {
           const selected = selectedPlace?.id === place.id;
           const color = getPlaceColor(place);
+          const statusMeta = getStatusMeta(place.status);
 
           return (
             <CircleMarker
@@ -76,6 +77,20 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
               <Tooltip direction="top" offset={[0, -6]}>
                 {place.name}
               </Tooltip>
+              <Popup minWidth={220}>
+                <Box className="rumbo-map-popup">
+                  <strong>{place.name}</strong>
+                  <span>{place.address || place.zone || 'Sin dirección'}</span>
+                  <div className="rumbo-map-popup-meta">
+                    <span>{statusMeta.label}</span>
+                    <span>{formatDistance(place.distance)}</span>
+                  </div>
+                  {place.notes && <p>{place.notes}</p>}
+                  <button type="button" onClick={() => onDirections?.(place)}>
+                    Cómo llegar
+                  </button>
+                </Box>
+              </Popup>
             </CircleMarker>
           );
         })}
