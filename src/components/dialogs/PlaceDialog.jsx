@@ -108,7 +108,7 @@ function compressImageFile(file) {
   });
 }
 
-export default function PlaceDialog({ open, place, onClose, onSave }) {
+export default function PlaceDialog({ open, place, onClose, onSave, searchBias }) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const [draft, setDraft] = useState(blankPlace);
@@ -147,7 +147,7 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
       setLocationError('');
 
       try {
-        const results = await searchLocation(query);
+        const results = await searchLocation(query, searchBias);
         if (!ignore) setLocationOptions(results);
       } catch (error) {
         if (!ignore) {
@@ -163,7 +163,7 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
       ignore = true;
       window.clearTimeout(timeoutId);
     };
-  }, [locationQuery, open]);
+  }, [locationQuery, open, searchBias]);
 
   function update(field, value) {
     setDraft((current) => ({ ...current, [field]: value }));

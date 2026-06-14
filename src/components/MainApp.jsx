@@ -640,6 +640,7 @@ export default function MainApp() {
         open={placeDialogOpen}
         place={editingPlace}
         onClose={() => setPlaceDialogOpen(false)}
+        searchBias={position}
         onSave={async (place) => {
           const saved = await handleSavePlace(place);
           if (saved && place.inboxId) await inboxStore.deleteItem(place.inboxId);
@@ -650,6 +651,7 @@ export default function MainApp() {
         onClose={() => setLinkDialogOpen(false)}
         onImport={handleImportLink}
         onSearchSelect={handleSearchSelect}
+        searchBias={position}
       />
       <FilterDrawer open={filtersOpen} filters={filters} setFilters={setFilters} onClose={() => setFiltersOpen(false)} places={places} />
       <Drawer

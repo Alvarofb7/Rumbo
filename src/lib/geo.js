@@ -40,12 +40,18 @@ export function normalizePosition(place, fallback = defaultCenter) {
   };
 }
 
-export async function searchLocation(query) {
+export async function searchLocation(query, options = {}) {
   const trimmed = query.trim();
   if (!trimmed) return [];
 
   try {
-    const response = await fetch(`/api/search-location?q=${encodeURIComponent(trimmed)}`);
+    const params = new URLSearchParams({ q: trimmed });
+    if (Number.isFinite(options.lat) && Number.isFinite(options.lng)) {
+      params.set('lat', String(options.lat));
+      params.set('lng', String(options.lng));
+    }
+
+    const response = await fetch(`/api/search-location?${params.toString()}`);
     const contentType = response.headers.get('content-type') || '';
     if (response.ok && contentType.includes('application/json')) return response.json();
   } catch {

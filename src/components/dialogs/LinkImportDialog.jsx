@@ -27,7 +27,7 @@ function looksLikeUrl(value) {
   return /^[^\s]+\.[^\s]{2,}/.test(trimmed);
 }
 
-export default function LinkImportDialog({ open, onClose, onImport, onSearchSelect }) {
+export default function LinkImportDialog({ open, onClose, onImport, onSearchSelect, searchBias }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -59,7 +59,7 @@ export default function LinkImportDialog({ open, onClose, onImport, onSearchSele
         return;
       }
 
-      const nextResults = await searchLocation(trimmed);
+      const nextResults = await searchLocation(trimmed, searchBias);
       setResults(nextResults);
       if (!nextResults.length) setError('No he encontrado nada con esa búsqueda.');
     } catch (actionError) {
