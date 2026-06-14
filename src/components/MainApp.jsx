@@ -85,11 +85,10 @@ function activeFilterCount(filters) {
     filters.status !== 'all',
     filters.minRating > 0,
     filters.zone,
-    filters.sort !== 'nearest',
   ].filter(Boolean).length;
 }
 
-function DataDrawer({ open, title, subtitle, isDesktop, onClose, children }) {
+function DataDrawer({ open, title, subtitle, isDesktop, onClose, children, fitContent = true }) {
   return (
     <Drawer
       anchor={isDesktop ? 'right' : 'bottom'}
@@ -99,11 +98,12 @@ function DataDrawer({ open, title, subtitle, isDesktop, onClose, children }) {
         sx: {
           width: { xs: '100%', md: 430 },
           maxWidth: '100vw',
-          height: { xs: '82dvh', md: '100dvh' },
+          height: { xs: fitContent ? 'auto' : '82dvh', md: '100dvh' },
+          maxHeight: { xs: '82dvh', md: '100dvh' },
           borderRadius: { xs: '30px 30px 0 0', md: '28px 0 0 28px' },
           overflow: 'hidden',
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr)',
+          gridTemplateRows: { xs: fitContent ? 'auto minmax(0, auto)' : 'auto minmax(0, 1fr)', md: 'auto minmax(0, 1fr)' },
           bgcolor: 'rgba(255,255,255,0.98)',
           border: '1px solid rgba(8,75,67,0.10)',
           boxShadow: { xs: '0 -24px 60px rgba(6,42,48,0.22)', md: '-22px 0 56px rgba(6,42,48,0.14)' },
@@ -116,9 +116,11 @@ function DataDrawer({ open, title, subtitle, isDesktop, onClose, children }) {
             <Typography variant="h3" noWrap>
               {title}
             </Typography>
-            <Typography variant="body2" color="text.secondary" noWrap>
-              {subtitle}
-            </Typography>
+            {subtitle && (
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {subtitle}
+              </Typography>
+            )}
           </Box>
           <IconButton aria-label={`Cerrar ${title}`} onClick={onClose}>
             <CloseIcon />
@@ -126,7 +128,7 @@ function DataDrawer({ open, title, subtitle, isDesktop, onClose, children }) {
         </Stack>
       </Box>
       <Divider />
-      <Box sx={{ minHeight: 0, overflow: 'auto', py: 1.4, pb: `calc(18px + env(safe-area-inset-bottom))` }}>
+      <Box sx={{ minHeight: 0, maxHeight: { xs: 'calc(82dvh - 76px)', md: 'none' }, overflow: 'auto', py: 1.4, pb: `calc(18px + env(safe-area-inset-bottom))` }}>
         {children}
       </Box>
     </Drawer>
@@ -142,7 +144,8 @@ export default function MainApp() {
   const inboxStore = useUserCollection(user, 'inbox', demoInbox);
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
   const [mapCenter, setMapCenter] = useState(null);
-  const [filters, setFilters] = useState(initialFilters);
+  const [mapFilters, setMapFilters] = useState(initialFilters);
+  const [listSort, setListSort] = useState('nearest');
   const [placeDialogOpen, setPlaceDialogOpen] = useState(false);
   const [editingPlace, setEditingPlace] = useState(null);
   const [mapSearchOpen, setMapSearchOpen] = useState(false);
@@ -159,9 +162,16 @@ export default function MainApp() {
 
   const places = placesStore.items;
   const inbox = inboxStore.items;
-  const filteredPlaces = usePlaceFilters(places, filters, position);
+  const listedFilters = useMemo(() => ({ ...initialFilters, sort: listSort }), [listSort]);
+  const filteredMapPlaces = usePlaceFilters(places, mapFilters, position);
+  const listedPlaces = usePlaceFilters(places, listedFilters, position);
   const selectedPlace = places.find((place) => place.id === selectedPlaceId) || null;
-  const filtersActive = activeFilterCount(filters);
+  const visibleMapPlaces = useMemo(() => {
+    if (!selectedPlace || !hasValidCoordinates(selectedPlace)) return filteredMapPlaces;
+    if (filteredMapPlaces.some((place) => place.id === selectedPlace.id)) return filteredMapPlaces;
+    return [...filteredMapPlaces, selectedPlace];
+  }, [filteredMapPlaces, selectedPlace]);
+  const filtersActive = activeFilterCount(mapFilters);
 
   const stats = useMemo(() => {
     return {
@@ -503,7 +513,7 @@ export default function MainApp() {
     <Box sx={{ height: '100dvh', bgcolor: 'background.default', overflow: 'hidden', position: 'relative' }}>
       <Box sx={{ position: 'absolute', inset: 0, zIndex: 1 }}>
         <MapPanel
-          places={filteredPlaces}
+          places={visibleMapPlaces}
           selectedPlace={selectedPlace}
           userPosition={position}
           center={mapCenter || position}
@@ -664,9 +674,9 @@ export default function MainApp() {
             <MyLocationIcon />
           </IconButton>
         </Tooltip>
-        <Tooltip title="Filtros y zonas">
+        <Tooltip title="Filtrar mapa">
           <IconButton
-            aria-label="Abrir filtros"
+            aria-label="Filtrar mapa"
             onClick={openFilters}
             sx={{ bgcolor: 'rgba(255,255,255,0.94)', boxShadow: '0 10px 26px rgba(6,42,48,0.14)', backdropFilter: 'blur(18px)' }}
           >
@@ -703,7 +713,7 @@ export default function MainApp() {
             '&:hover': { bgcolor: 'rgba(255,255,255,0.98)' },
           }}
         >
-          {filtersActive} filtros activos
+          {filtersActive} filtros de mapa
         </Button>
       )}
 
@@ -779,21 +789,19 @@ export default function MainApp() {
       <DataDrawer
         open={placesOpen}
         title="Mis lugares"
-        subtitle={`${filteredPlaces.length} visibles · ${places.length} guardados`}
         isDesktop={isDesktop}
         onClose={() => setPlacesOpen(false)}
       >
         <PlacesPanel
-          places={filteredPlaces}
+          places={listedPlaces}
           selectedPlace={selectedPlace}
-          filters={filters}
-          setFilters={setFilters}
-          stats={stats}
+          totalPlaces={places.length}
+          sort={listSort}
+          onSortChange={setListSort}
           onSelect={selectPlace}
           onEdit={openEditPlace}
           onDelete={handleDeletePlace}
           onDirections={openDirections}
-          onOpenFilters={openFilters}
         />
       </DataDrawer>
 
@@ -828,7 +836,7 @@ export default function MainApp() {
         onClose={() => setLinkDialogOpen(false)}
         onImport={handleImportLink}
       />
-      <FilterDrawer open={filtersOpen} filters={filters} setFilters={setFilters} onClose={() => setFiltersOpen(false)} places={places} />
+      <FilterDrawer open={filtersOpen} filters={mapFilters} setFilters={setMapFilters} onClose={() => setFiltersOpen(false)} places={places} />
       <Drawer
         anchor="left"
         open={menuOpen}
@@ -841,9 +849,7 @@ export default function MainApp() {
           inbox={inbox}
           firebaseReady={firebaseReady}
           onClose={() => setMenuOpen(false)}
-          onOpenPlaces={openPlaces}
           onOpenReview={openReview}
-          onOpenFilters={openFilters}
         />
       </Drawer>
     </Box>

@@ -12,10 +12,8 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import CloudDoneIcon from '@mui/icons-material/CloudDone';
 import DownloadIcon from '@mui/icons-material/Download';
-import FilterListIcon from '@mui/icons-material/FilterList';
 import InboxIcon from '@mui/icons-material/Inbox';
 import LogoutIcon from '@mui/icons-material/Logout';
 import StorageIcon from '@mui/icons-material/Storage';
@@ -27,9 +25,7 @@ export default function AppMenuDrawer({
   inbox,
   firebaseReady,
   onClose,
-  onOpenPlaces,
   onOpenReview,
-  onOpenFilters,
 }) {
   const { user, signOut } = useAuth();
 
@@ -81,20 +77,6 @@ export default function AppMenuDrawer({
         <Divider />
 
         <List disablePadding sx={{ display: 'grid', gap: 0.75 }}>
-          <ListItemButton onClick={() => runAndClose(onOpenPlaces)} sx={{ borderRadius: 3 }}>
-            <ListItemIcon sx={{ minWidth: 40 }}>
-              <BookmarkBorderIcon color="primary" />
-            </ListItemIcon>
-            <ListItemText primary="Mis lugares" secondary="Lista, ranking y cercanía" />
-          </ListItemButton>
-
-          <ListItemButton onClick={() => runAndClose(onOpenFilters)} sx={{ borderRadius: 3 }}>
-            <ListItemIcon sx={{ minWidth: 40 }}>
-              <FilterListIcon color="primary" />
-            </ListItemIcon>
-            <ListItemText primary="Filtros y zonas" secondary="Barrio, etiquetas, estado y orden" />
-          </ListItemButton>
-
           <ListItemButton onClick={() => runAndClose(onOpenReview)} sx={{ borderRadius: 3 }}>
             <ListItemIcon sx={{ minWidth: 40 }}>
               <Badge badgeContent={inbox.length} color="primary">

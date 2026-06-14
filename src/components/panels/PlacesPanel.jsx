@@ -11,11 +11,10 @@ import {
 } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditIcon from '@mui/icons-material/Edit';
-import FilterListIcon from '@mui/icons-material/FilterList';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import NearMeIcon from '@mui/icons-material/NearMe';
 import { formatDistance } from '../../lib/geo';
-import { getStatusMeta, RatingText, SourceBadge, TagList, TypeIcon } from '../common/placeUtils';
+import { getStatusMeta, RatingText, TagList, TypeIcon } from '../common/placeUtils';
 
 const sortLabels = {
   nearest: 'Cercanía',
@@ -27,14 +26,13 @@ const sortLabels = {
 export default function PlacesPanel({
   places,
   selectedPlace,
-  filters,
-  setFilters,
-  stats,
+  totalPlaces,
+  sort,
+  onSortChange,
   onSelect,
   onEdit,
   onDelete,
   onDirections,
-  onOpenFilters,
 }) {
   const selectedPlaceRef = useRef(null);
 
@@ -43,30 +41,17 @@ export default function PlacesPanel({
   }, [selectedPlace?.id]);
 
   return (
-    <Stack spacing={1.25} sx={{ px: 2, pb: 2 }}>
-      <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
-        {[
-          [`${stats.saved} guardados`, 'primary.light'],
-          [`${stats.pending} por visitar`, 'secondary.light'],
-          [`${stats.visited} visitados`, 'rgba(11,155,114,0.12)'],
-        ].map(([label, bgcolor]) => (
-          <Chip key={label} label={label} size="small" sx={{ bgcolor, fontWeight: 750 }} />
-        ))}
-      </Stack>
-
+    <Stack spacing={1} sx={{ px: 2, pb: 2 }}>
       <Stack direction="row" spacing={1} alignItems="center">
-        <Typography variant="body2" color="text.secondary" fontWeight={750} sx={{ flex: 1 }}>
-          Orden
+        <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+          {totalPlaces} guardados
         </Typography>
-        <IconButton size="small" onClick={onOpenFilters}>
-          <FilterListIcon fontSize="small" />
-        </IconButton>
         <Select
           size="small"
-          value={filters.sort}
+          value={sort}
           IconComponent={KeyboardArrowDownIcon}
-          onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value }))}
-          sx={{ minWidth: 132 }}
+          onChange={(event) => onSortChange(event.target.value)}
+          sx={{ minWidth: 128 }}
         >
           {Object.entries(sortLabels).map(([value, label]) => (
             <MenuItem key={value} value={value}>
@@ -76,13 +61,11 @@ export default function PlacesPanel({
         </Select>
       </Stack>
 
-      {filters.zone && <Chip label={`Zona: ${filters.zone}`} onDelete={() => setFilters((current) => ({ ...current, zone: '' }))} />}
-
       <Stack divider={<Divider flexItem />} sx={{ borderTop: '1px solid rgba(8,75,67,0.08)' }}>
         {places.length === 0 ? (
-          <Box sx={{ py: 5, textAlign: 'center' }}>
-            <Typography variant="h4">No hay lugares con estos filtros</Typography>
-            <Typography color="text.secondary">Prueba quitando etiquetas o bajando el ranking mínimo.</Typography>
+          <Box sx={{ py: 4, textAlign: 'center' }}>
+            <Typography variant="h4">Aún no hay lugares</Typography>
+            <Typography color="text.secondary">Guarda tu primer sitio desde el botón +.</Typography>
           </Box>
         ) : (
           places.map((place) => {
@@ -112,8 +95,8 @@ export default function PlacesPanel({
                 <Stack direction="row" spacing={1.2} alignItems="flex-start">
                   <Box
                     sx={{
-                      width: 54,
-                      height: 54,
+                      width: 48,
+                      height: 48,
                       borderRadius: 2,
                       bgcolor: 'rgba(0,97,111,0.08)',
                       color: 'primary.main',
@@ -123,7 +106,7 @@ export default function PlacesPanel({
                   >
                     <TypeIcon tags={place.tags} />
                   </Box>
-                  <Stack spacing={0.75} sx={{ minWidth: 0, flex: 1 }}>
+                  <Stack spacing={0.55} sx={{ minWidth: 0, flex: 1 }}>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Typography variant="h4" noWrap sx={{ flex: 1 }}>
                         {place.name}
@@ -135,11 +118,10 @@ export default function PlacesPanel({
                     <Typography variant="body2" color="text.secondary" noWrap>
                       {place.zone || place.address}
                     </Typography>
-                    <TagList tags={place.tags} limit={3} />
+                    {(place.tags || []).length > 0 && <TagList tags={place.tags} limit={2} />}
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                       <RatingText rating={place.rating} />
                       <Chip size="small" label={statusMeta.label} sx={{ color: statusMeta.color, bgcolor: `${statusMeta.color}14` }} />
-                      <SourceBadge sourceType={place.sourceType} compact />
                     </Stack>
                   </Stack>
                   <Stack spacing={0.5}>

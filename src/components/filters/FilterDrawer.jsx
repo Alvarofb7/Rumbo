@@ -16,13 +16,6 @@ import {
 import FilterListIcon from '@mui/icons-material/FilterList';
 import { statusOptions } from '../../data/demoData';
 
-const sortOptions = [
-  ['nearest', 'Cercanía'],
-  ['ranking', 'Ranking'],
-  ['zone', 'Zona'],
-  ['recent', 'Recientes'],
-];
-
 export default function FilterDrawer({ open, filters, setFilters, onClose, places }) {
   const availableTags = [...new Set(places.flatMap((place) => place.tags || []))].sort();
   const zones = [...new Set(places.map((place) => place.zone).filter(Boolean))].sort();
@@ -43,39 +36,27 @@ export default function FilterDrawer({ open, filters, setFilters, onClose, place
           <Stack direction="row" spacing={1.5} alignItems="center">
             <FilterListIcon color="primary" />
             <Box sx={{ flex: 1 }}>
-              <Typography variant="h3">Filtros</Typography>
-              <Typography color="text.secondary">Combina zona, ranking, etiquetas y estado.</Typography>
+              <Typography variant="h3">Filtrar mapa</Typography>
+              <Typography color="text.secondary">Sólo cambia los pins visibles en el mapa.</Typography>
             </Box>
             <Button onClick={() => setFilters({ search: '', tags: [], status: 'all', minRating: 0, zone: '', sort: 'nearest' })}>
               Limpiar
             </Button>
           </Stack>
 
-          <TextField label="Buscar en lugares y notas" value={filters.search} onChange={(event) => patch({ search: event.target.value })} fullWidth />
+          <TextField label="Buscar pins o notas" value={filters.search} onChange={(event) => patch({ search: event.target.value })} fullWidth />
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-            <FormControl fullWidth>
-              <InputLabel>Orden</InputLabel>
-              <Select label="Orden" value={filters.sort} onChange={(event) => patch({ sort: event.target.value })}>
-                {sortOptions.map(([value, label]) => (
-                  <MenuItem key={value} value={value}>
-                    {label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth>
-              <InputLabel>Estado</InputLabel>
-              <Select label="Estado" value={filters.status} onChange={(event) => patch({ status: event.target.value })}>
-                <MenuItem value="all">Todos</MenuItem>
-                {statusOptions.map((status) => (
-                  <MenuItem key={status.value} value={status.value}>
-                    {status.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Stack>
+          <FormControl fullWidth>
+            <InputLabel>Estado</InputLabel>
+            <Select label="Estado" value={filters.status} onChange={(event) => patch({ status: event.target.value })}>
+              <MenuItem value="all">Todos</MenuItem>
+              {statusOptions.map((status) => (
+                <MenuItem key={status.value} value={status.value}>
+                  {status.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
           <FormControl fullWidth>
             <InputLabel>Zona</InputLabel>
