@@ -41,6 +41,30 @@ const blankPlace = {
   imageUrl: '',
 };
 
+const formCardSx = {
+  p: { xs: 1.25, sm: 1.5 },
+  borderRadius: '26px',
+  borderColor: 'rgba(8,75,67,0.10)',
+  bgcolor: 'rgba(255,255,255,0.76)',
+  overflow: 'hidden',
+  maxWidth: '100%',
+};
+
+const compactFieldSx = {
+  minWidth: 0,
+  '& .MuiInputBase-root': {
+    minWidth: 0,
+    bgcolor: '#fff',
+    borderRadius: '18px',
+  },
+  '& .MuiOutlinedInput-notchedOutline': {
+    borderColor: 'rgba(8,75,67,0.18)',
+  },
+  '& .MuiFormHelperText-root': {
+    mx: 1.5,
+  },
+};
+
 function compressImageFile(file) {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
@@ -197,7 +221,7 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
-      <DialogTitle sx={{ pb: 1 }}>
+      <DialogTitle sx={{ px: { xs: 2.25, sm: 3 }, pb: 1 }}>
         <Stack direction="row" spacing={1.5} alignItems="center">
           <Box sx={{ flex: 1 }}>
             <Typography variant="h3">{draft.id ? 'Editar lugar' : 'Guardar lugar'}</Typography>
@@ -210,9 +234,16 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
           </IconButton>
         </Stack>
       </DialogTitle>
-      <DialogContent dividers sx={{ bgcolor: 'rgba(247,244,237,0.55)' }}>
+      <DialogContent
+        dividers
+        sx={{
+          bgcolor: 'rgba(247,244,237,0.55)',
+          px: { xs: 2.25, sm: 3 },
+          overflowX: 'hidden',
+        }}
+      >
         <Stack spacing={1.6} sx={{ pt: 1 }}>
-          <Paper variant="outlined" sx={{ p: 1.4, borderRadius: 4, borderColor: 'rgba(8,75,67,0.10)' }}>
+          <Paper variant="outlined" sx={formCardSx}>
             <Stack spacing={1.2}>
               <Stack direction="row" spacing={1} alignItems="center">
                 <PlaceIcon color={hasSelectedLocation() ? 'success' : 'primary'} />
@@ -239,6 +270,7 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
                     label="Buscar sitio"
                     placeholder="Ojalá Tapas Sevilla"
                     helperText={hasSelectedLocation() ? draft.address : 'Elige un resultado para fijarlo en el mapa.'}
+                    sx={compactFieldSx}
                   />
                 )}
               />
@@ -260,16 +292,16 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
             </Stack>
           </Paper>
 
-          <Paper variant="outlined" sx={{ p: 1.4, borderRadius: 4, borderColor: 'rgba(8,75,67,0.10)' }}>
+          <Paper variant="outlined" sx={formCardSx}>
             <Stack spacing={1.4}>
-              <TextField label="Nombre" value={draft.name} onChange={(event) => update('name', event.target.value)} required fullWidth />
-              <TextField label="Zona o barrio" value={draft.zone} onChange={(event) => update('zone', event.target.value)} fullWidth />
+              <TextField label="Nombre" value={draft.name} onChange={(event) => update('name', event.target.value)} required fullWidth sx={compactFieldSx} />
+              <TextField label="Zona o barrio" value={draft.zone} onChange={(event) => update('zone', event.target.value)} fullWidth sx={compactFieldSx} />
 
               <Box>
                 <Typography fontWeight={850} sx={{ mb: 0.8 }}>
                   Estado
                 </Typography>
-                <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap">
+                <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap" sx={{ '& .MuiButton-root': { minWidth: 0 } }}>
                   {statusOptions
                     .filter((status) => status.value !== 'discarded')
                     .map((status) => {
@@ -319,12 +351,13 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
                 options={tagOptions}
                 value={draft.tags || []}
                 onChange={(_, value) => update('tags', value)}
-                renderInput={(params) => <TextField {...params} label="Etiquetas" placeholder="Bar, terraza, cita..." />}
+                sx={{ minWidth: 0 }}
+                renderInput={(params) => <TextField {...params} label="Etiquetas" placeholder="Bar, terraza, cita..." sx={compactFieldSx} />}
               />
             </Stack>
           </Paper>
 
-          <Paper variant="outlined" sx={{ p: 1.4, borderRadius: 4, borderColor: 'rgba(8,75,67,0.10)' }}>
+          <Paper variant="outlined" sx={formCardSx}>
             <Stack spacing={1.2}>
               <Typography fontWeight={850}>Foto</Typography>
               {draft.imageUrl ? (
@@ -356,11 +389,12 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
                 onChange={(event) => update('imageUrl', event.target.value)}
                 placeholder="https://..."
                 fullWidth
+                sx={compactFieldSx}
               />
             </Stack>
           </Paper>
 
-          <Paper variant="outlined" sx={{ p: 1.4, borderRadius: 4, borderColor: 'rgba(8,75,67,0.10)' }}>
+          <Paper variant="outlined" sx={formCardSx}>
             <Stack spacing={1.2}>
               <Stack direction="row" spacing={1} alignItems="center">
                 <LinkIcon color="primary" />
@@ -372,9 +406,9 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
                 </Box>
               </Stack>
 
-              <TextField label="Enlace original" value={draft.sourceUrl} onChange={(event) => update('sourceUrl', event.target.value)} fullWidth />
+              <TextField label="Enlace original" value={draft.sourceUrl} onChange={(event) => update('sourceUrl', event.target.value)} fullWidth sx={compactFieldSx} />
 
-              <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap">
+              <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap" sx={{ '& .MuiButton-root': { minWidth: 0 } }}>
                 {Object.entries(sourceMeta).map(([value, meta]) => {
                   const selected = draft.sourceType === value;
                   return (
@@ -400,7 +434,7 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
           </Paper>
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ px: 3, py: 2, pb: `calc(16px + env(safe-area-inset-bottom))` }}>
+      <DialogActions sx={{ px: { xs: 2.25, sm: 3 }, py: 2, pb: `calc(16px + env(safe-area-inset-bottom))` }}>
         <Button onClick={onClose}>Cancelar</Button>
         <Button variant="contained" onClick={handleSave} disabled={!draft.name.trim() || photoLoading}>
           Guardar lugar
