@@ -8,17 +8,11 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
-  List,
-  ListItemButton,
-  ListItemText,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import LinkIcon from '@mui/icons-material/Link';
-import SearchIcon from '@mui/icons-material/Search';
-import { searchLocation } from '../../lib/geo';
 
 function looksLikeUrl(value) {
   const trimmed = value.trim();
@@ -27,9 +21,8 @@ function looksLikeUrl(value) {
   return /^[^\s]+\.[^\s]{2,}/.test(trimmed);
 }
 
-export default function LinkImportDialog({ open, onClose, onImport, onSearchSelect, searchBias }) {
+export default function LinkImportDialog({ open, onClose, onImport }) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const isUrl = useMemo(() => looksLikeUrl(query), [query]);
@@ -37,7 +30,6 @@ export default function LinkImportDialog({ open, onClose, onImport, onSearchSele
   useEffect(() => {
     if (!open) {
       setQuery('');
-      setResults([]);
       setError('');
       setLoading(false);
     }
@@ -49,19 +41,17 @@ export default function LinkImportDialog({ open, onClose, onImport, onSearchSele
     if (!trimmed) return;
 
     setError('');
+
+    if (!isUrl) {
+      setError('Pega un enlace válido de Maps, Tripadvisor o Instagram.');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      if (isUrl) {
-        await onImport(trimmed);
-        setQuery('');
-        setResults([]);
-        return;
-      }
-
-      const nextResults = await searchLocation(trimmed, searchBias);
-      setResults(nextResults);
-      if (!nextResults.length) setError('No he encontrado nada con esa búsqueda.');
+      await onImport(trimmed);
+      setQuery('');
     } catch (actionError) {
       setError(actionError.message);
     } finally {
@@ -69,56 +59,37 @@ export default function LinkImportDialog({ open, onClose, onImport, onSearchSele
     }
   }
 
-  function handleSelect(result) {
-    onSearchSelect(result);
-    setQuery('');
-    setResults([]);
-    onClose();
-  }
-
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Buscar o pegar enlace</DialogTitle>
+      <DialogTitle>Importar enlace</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ pt: 1 }}>
           <Typography color="text.secondary">
-            Busca una ciudad, barrio, dirección o lugar. Si pegas un enlace de Google Maps, Apple Maps, Tripadvisor o Instagram,
-            lo guardo en la bandeja para revisarlo después.
+            Pega un enlace de Google Maps, Apple Maps, Tripadvisor o Instagram. Lo guardo en revisión para que lo confirmes antes de añadirlo.
           </Typography>
           {error && <Alert severity="warning">{error}</Alert>}
           <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', gap: 1 }}>
             <TextField
-              label="Lugar, dirección o enlace"
+              label="Enlace"
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value);
-                setResults([]);
                 setError('');
               }}
-              placeholder="Casa Dani Madrid o https://maps.apple.com/..."
+              placeholder="https://maps.apple.com/..."
               autoFocus
               fullWidth
             />
-            <Button type="submit" variant="contained" disabled={!query.trim() || loading} aria-label={isUrl ? 'Añadir enlace' : 'Buscar'}>
-              {loading ? <CircularProgress size={22} color="inherit" /> : isUrl ? <LinkIcon /> : <SearchIcon />}
+            <Button type="submit" variant="contained" disabled={!query.trim() || loading} aria-label="Añadir enlace">
+              {loading ? <CircularProgress size={22} color="inherit" /> : <LinkIcon />}
             </Button>
           </Box>
-          <List disablePadding>
-            {results.map((result, index) => (
-              <Box key={result.id}>
-                {index > 0 && <Divider />}
-                <ListItemButton onClick={() => handleSelect(result)}>
-                  <ListItemText primary={result.name} secondary={result.address} />
-                </ListItemButton>
-              </Box>
-            ))}
-          </List>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button onClick={onClose}>Cancelar</Button>
         <Button variant="contained" onClick={handleSubmit} disabled={!query.trim() || loading}>
-          {isUrl ? 'Añadir enlace' : 'Buscar'}
+          Añadir a revisión
         </Button>
       </DialogActions>
     </Dialog>

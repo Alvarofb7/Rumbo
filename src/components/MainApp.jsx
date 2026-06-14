@@ -37,6 +37,7 @@ import LinkImportDialog from './dialogs/LinkImportDialog';
 import MapPanel from './map/MapPanel';
 import PlaceDialog from './dialogs/PlaceDialog';
 import PlacesPanel from './panels/PlacesPanel';
+import SearchDialog from './dialogs/SearchDialog';
 import SelectedPlaceCard from './cards/SelectedPlaceCard';
 import AppMenuDrawer from './navigation/AppMenuDrawer';
 
@@ -140,6 +141,7 @@ export default function MainApp() {
   const [filters, setFilters] = useState(initialFilters);
   const [placeDialogOpen, setPlaceDialogOpen] = useState(false);
   const [editingPlace, setEditingPlace] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -363,6 +365,7 @@ export default function MainApp() {
   async function handleSearchSelect(result) {
     setSelectedPlaceId(null);
     setMapCenter({ lat: result.lat, lng: result.lng });
+    setSearchOpen(false);
     if (locationStatus !== 'ready') {
       setManualPosition({ lat: result.lat, lng: result.lng, label: result.name });
       setToast(`${result.name} será tu referencia de cercanía.`);
@@ -440,8 +443,8 @@ export default function MainApp() {
             </IconButton>
           </Tooltip>
           <ButtonBase
-            aria-label="Buscar lugar o pegar enlace"
-            onClick={() => setLinkDialogOpen(true)}
+            aria-label="Buscar en el mapa"
+            onClick={() => setSearchOpen(true)}
             sx={{
               flex: 1,
               minWidth: 0,
@@ -456,10 +459,10 @@ export default function MainApp() {
             <SearchIcon fontSize="small" />
             <Box sx={{ minWidth: 0, textAlign: 'left' }}>
               <Typography noWrap fontWeight={800} sx={{ lineHeight: 1.1 }}>
-                Buscar o pegar enlace
+                Buscar en el mapa
               </Typography>
               <Typography variant="caption" color="text.secondary" noWrap sx={{ display: { xs: 'none', sm: 'block' } }}>
-                Lugares, barrios, Google Maps, Apple Maps o Tripadvisor
+                Ciudad, barrio, dirección o restaurante
               </Typography>
             </Box>
           </ButtonBase>
@@ -650,9 +653,8 @@ export default function MainApp() {
         open={linkDialogOpen}
         onClose={() => setLinkDialogOpen(false)}
         onImport={handleImportLink}
-        onSearchSelect={handleSearchSelect}
-        searchBias={position}
       />
+      <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={handleSearchSelect} searchBias={position} />
       <FilterDrawer open={filtersOpen} filters={filters} setFilters={setFilters} onClose={() => setFiltersOpen(false)} places={places} />
       <Drawer
         anchor="left"

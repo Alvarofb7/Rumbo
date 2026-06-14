@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Autocomplete,
   Alert,
@@ -65,6 +65,10 @@ const compactFieldSx = {
   },
 };
 
+function hasUsableCoordinates(lat, lng) {
+  return lat !== '' && lng !== '' && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
+}
+
 function compressImageFile(file) {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
@@ -118,12 +122,17 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
   const [locationError, setLocationError] = useState('');
   const [photoLoading, setPhotoLoading] = useState(false);
   const [photoError, setPhotoError] = useState('');
+  const fixedLocationQueryRef = useRef('');
 
   useEffect(() => {
     if (open) {
       const nextDraft = { ...blankPlace, ...place };
+      const initialLocationQuery = nextDraft.address || nextDraft.name || '';
+      const initialHasCoordinates = hasUsableCoordinates(nextDraft.lat, nextDraft.lng);
+
+      fixedLocationQueryRef.current = initialHasCoordinates ? initialLocationQuery.trim() : '';
       setDraft(nextDraft);
-      setLocationQuery(nextDraft.address || nextDraft.name || '');
+      setLocationQuery(initialLocationQuery);
       setLocationOptions([]);
       setLocationError('');
       setPhotoError('');
@@ -138,6 +147,13 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
     if (query.length < 3) {
       setLocationOptions([]);
       setLocationLoading(false);
+      return undefined;
+    }
+
+    if (fixedLocationQueryRef.current && query === fixedLocationQueryRef.current && hasUsableCoordinates(draft.lat, draft.lng)) {
+      setLocationOptions([]);
+      setLocationLoading(false);
+      setLocationError('');
       return undefined;
     }
 
@@ -163,19 +179,25 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       ignore = true;
       window.clearTimeout(timeoutId);
     };
-  }, [locationQuery, open, searchBias]);
+  }, [draft.lat, draft.lng, locationQuery, open, searchBias]);
 
   function update(field, value) {
     setDraft((current) => ({ ...current, [field]: value }));
   }
 
   function hasSelectedLocation() {
-    return draft.lat !== '' && draft.lng !== '' && Number.isFinite(Number(draft.lat)) && Number.isFinite(Number(draft.lng));
+    return hasUsableCoordinates(draft.lat, draft.lng);
   }
 
   function applyLocation(result) {
     if (!result || typeof result === 'string') return;
 
+    const nextLocationQuery = result.address || result.name;
+    fixedLocationQueryRef.current = nextLocationQuery.trim();
+    setLocationLoading(false);
+    setLocationError('');
+    setLocationOptions([]);
+    setLocationQuery(nextLocationQuery);
     setDraft((current) => ({
       ...current,
       name: current.name?.trim() ? current.name : result.name,
@@ -184,8 +206,6 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       lat: result.lat,
       lng: result.lng,
     }));
-    setLocationQuery(result.address || result.name);
-    setLocationOptions([]);
   }
 
   async function handlePhotoFile(event) {
@@ -258,9 +278,31 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
               <Autocomplete
                 filterOptions={(options) => options}
                 options={locationOptions}
+                getOptionKey={(option) => (typeof option === 'string' ? option : option.id || `${option.name}-${option.lat}-${option.lng}`)}
                 getOptionLabel={(option) => (typeof option === 'string' ? option : `${option.name} · ${option.address}`)}
+                renderOption={(props, option) => {
+                  const { key: _key, ...optionProps } = props;
+                  const optionKey = option.id || `${option.name}-${option.lat}-${option.lng}`;
+
+                  return (
+                    <Box component="li" key={optionKey} {...optionProps}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography fontWeight={800} noWrap>
+                          {option.name}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {option.address}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  );
+                }}
                 inputValue={locationQuery}
-                onInputChange={(_, value) => setLocationQuery(value)}
+                onInputChange={(_, value, reason) => {
+                  if (reason === 'reset' || reason === 'selectOption') return;
+                  if (reason === 'input' || reason === 'clear') fixedLocationQueryRef.current = '';
+                  setLocationQuery(value);
+                }}
                 onChange={(_, value) => applyLocation(value)}
                 loading={locationLoading}
                 noOptionsText={locationQuery.trim().length < 3 ? 'Escribe al menos 3 caracteres' : 'Sin resultados'}
