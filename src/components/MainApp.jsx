@@ -417,7 +417,7 @@ export default function MainApp() {
           height: '100%',
         }}
       >
-        <Box sx={{ position: 'relative', minHeight: 0, height: { xs: mapHeight, md: '100dvh' } }}>
+        <Box sx={{ position: 'relative', minHeight: 0, height: { xs: mapHeight, md: '100dvh' }, zIndex: 1 }}>
           <MapPanel
             places={filteredPlaces}
             selectedPlace={selectedPlace}
@@ -435,6 +435,7 @@ export default function MainApp() {
             elevation={0}
             sx={{
               top: 0,
+              zIndex: 900,
               background: 'linear-gradient(180deg, rgba(247,244,237,0.98), rgba(247,244,237,0.84) 74%, rgba(247,244,237,0))',
               pb: 5,
               pointerEvents: 'none',
@@ -492,7 +493,7 @@ export default function MainApp() {
             </Box>
           </AppBar>
 
-          <Stack sx={{ position: 'absolute', right: 12, top: 132, gap: 1 }}>
+          <Stack sx={{ position: 'absolute', right: 12, top: 132, gap: 1, zIndex: 920 }}>
             <Tooltip title={panelCollapsed ? 'Mostrar panel' : 'Ver solo mapa'}>
               <IconButton
                 onClick={() => {
@@ -523,6 +524,7 @@ export default function MainApp() {
               position: 'absolute',
               left: { xs: 14, md: 18 },
               bottom: { xs: 20, md: 22 },
+              zIndex: 920,
               minHeight: 42,
               px: 1.6,
               bgcolor: 'rgba(255,255,255,0.94)',
@@ -545,6 +547,7 @@ export default function MainApp() {
               position: 'absolute',
               right: { xs: 18, md: 24 },
               bottom: { xs: 18, md: 24 },
+              zIndex: 930,
               width: 64,
               height: 64,
               boxShadow: '0 14px 34px rgba(249,184,38,0.42)',
