@@ -4,11 +4,16 @@ import {
   Badge,
   Box,
   Button,
-  ButtonBase,
+  CircularProgress,
+  ClickAwayListener,
   Divider,
   Drawer,
   Fab,
   IconButton,
+  InputBase,
+  List,
+  ListItemButton,
+  ListItemText,
   Paper,
   Stack,
   Tooltip,
@@ -37,7 +42,6 @@ import LinkImportDialog from './dialogs/LinkImportDialog';
 import MapPanel from './map/MapPanel';
 import PlaceDialog from './dialogs/PlaceDialog';
 import PlacesPanel from './panels/PlacesPanel';
-import SearchDialog from './dialogs/SearchDialog';
 import SelectedPlaceCard from './cards/SelectedPlaceCard';
 import AppMenuDrawer from './navigation/AppMenuDrawer';
 
@@ -141,7 +145,11 @@ export default function MainApp() {
   const [filters, setFilters] = useState(initialFilters);
   const [placeDialogOpen, setPlaceDialogOpen] = useState(false);
   const [editingPlace, setEditingPlace] = useState(null);
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [mapSearchOpen, setMapSearchOpen] = useState(false);
+  const [mapSearchQuery, setMapSearchQuery] = useState('');
+  const [mapSearchResults, setMapSearchResults] = useState([]);
+  const [mapSearchLoading, setMapSearchLoading] = useState(false);
+  const [mapSearchError, setMapSearchError] = useState('');
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -171,6 +179,47 @@ export default function MainApp() {
     const timeoutId = window.setTimeout(() => setToast(''), 3500);
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
+
+  useEffect(() => {
+    if (!mapSearchOpen) {
+      setMapSearchLoading(false);
+      return undefined;
+    }
+
+    const query = mapSearchQuery.trim();
+    if (query.length < 3) {
+      setMapSearchResults([]);
+      setMapSearchError('');
+      setMapSearchLoading(false);
+      return undefined;
+    }
+
+    let ignore = false;
+    const timeoutId = window.setTimeout(async () => {
+      setMapSearchLoading(true);
+      setMapSearchError('');
+
+      try {
+        const results = await searchLocation(query, { lat: position.lat, lng: position.lng });
+        if (!ignore) {
+          setMapSearchResults(results);
+          if (!results.length) setMapSearchError('No he encontrado esa ubicación.');
+        }
+      } catch (error) {
+        if (!ignore) {
+          setMapSearchResults([]);
+          setMapSearchError(error.message);
+        }
+      } finally {
+        if (!ignore) setMapSearchLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      ignore = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [mapSearchOpen, mapSearchQuery, position.lat, position.lng]);
 
   function openCreatePlace(prefill = null) {
     setEditingPlace(prefill || { ...emptyPlace });
@@ -365,13 +414,65 @@ export default function MainApp() {
   async function handleSearchSelect(result) {
     setSelectedPlaceId(null);
     setMapCenter({ lat: result.lat, lng: result.lng });
-    setSearchOpen(false);
     if (locationStatus !== 'ready') {
       setManualPosition({ lat: result.lat, lng: result.lng, label: result.name });
       setToast(`${result.name} será tu referencia de cercanía.`);
     }
     setPlacesOpen(false);
     setReviewOpen(false);
+  }
+
+  function handleInlineSearchSelect(result) {
+    setMapSearchQuery(result.name || result.address || '');
+    setMapSearchResults([]);
+    setMapSearchError('');
+    setMapSearchLoading(false);
+    setMapSearchOpen(false);
+    handleSearchSelect(result);
+  }
+
+  async function handleInlineSearchSubmit(event) {
+    event.preventDefault();
+    const query = mapSearchQuery.trim();
+    if (!query) return;
+
+    if (mapSearchResults.length) {
+      handleInlineSearchSelect(mapSearchResults[0]);
+      return;
+    }
+
+    if (query.length < 3) {
+      setMapSearchOpen(true);
+      setMapSearchError('Escribe al menos 3 caracteres.');
+      return;
+    }
+
+    setMapSearchOpen(true);
+    setMapSearchLoading(true);
+    setMapSearchError('');
+
+    try {
+      const results = await searchLocation(query, { lat: position.lat, lng: position.lng });
+      setMapSearchResults(results);
+      if (results[0]) {
+        handleInlineSearchSelect(results[0]);
+      } else {
+        setMapSearchError('No he encontrado esa ubicación.');
+      }
+    } catch (error) {
+      setMapSearchResults([]);
+      setMapSearchError(error.message);
+    } finally {
+      setMapSearchLoading(false);
+    }
+  }
+
+  function clearInlineSearch() {
+    setMapSearchQuery('');
+    setMapSearchResults([]);
+    setMapSearchError('');
+    setMapSearchLoading(false);
+    setMapSearchOpen(false);
   }
 
   function selectPlace(place) {
@@ -396,6 +497,8 @@ export default function MainApp() {
     window.open(`https://maps.apple.com/?daddr=${lat},${lng}&q=${label}`, '_blank', 'noopener,noreferrer');
   }
 
+  const showMapSearchPanel = mapSearchOpen && (mapSearchQuery.trim().length > 0 || mapSearchLoading || mapSearchError);
+
   return (
     <Box sx={{ height: '100dvh', bgcolor: 'background.default', overflow: 'hidden', position: 'relative' }}>
       <Box sx={{ position: 'absolute', inset: 0, zIndex: 1 }}>
@@ -419,57 +522,128 @@ export default function MainApp() {
           pointerEvents: 'none',
         }}
       >
-        <Paper
-          elevation={0}
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.6,
-            maxWidth: 680,
-            height: 58,
-            mx: 'auto',
-            px: 0.65,
-            borderRadius: 999,
-            bgcolor: 'rgba(255,255,255,0.92)',
-            border: '1px solid rgba(8,75,67,0.10)',
-            boxShadow: '0 18px 48px rgba(6,42,48,0.16)',
-            backdropFilter: 'blur(22px)',
-            pointerEvents: 'auto',
-          }}
-        >
-          <Tooltip title="Menú">
-            <IconButton aria-label="Abrir menú" onClick={() => setMenuOpen(true)}>
-              <MenuIcon />
-            </IconButton>
-          </Tooltip>
-          <ButtonBase
-            aria-label="Buscar en el mapa"
-            onClick={() => setSearchOpen(true)}
-            sx={{
-              flex: 1,
-              minWidth: 0,
-              height: 46,
-              px: 0.8,
-              borderRadius: 999,
-              justifyContent: 'flex-start',
-              color: 'text.secondary',
-              gap: 1,
-            }}
-          >
-            <SearchIcon fontSize="small" />
-            <Box sx={{ minWidth: 0, textAlign: 'left' }}>
-              <Typography noWrap fontWeight={800} sx={{ lineHeight: 1.1 }}>
-                Buscar en el mapa
-              </Typography>
-              <Typography variant="caption" color="text.secondary" noWrap sx={{ display: { xs: 'none', sm: 'block' } }}>
-                Ciudad, barrio, dirección o restaurante
-              </Typography>
-            </Box>
-          </ButtonBase>
-          <Tooltip title={firebaseReady ? 'Sincronizado' : 'Modo local'}>
-            <Box sx={{ width: 8, height: 8, mr: 1.2, borderRadius: 99, bgcolor: firebaseReady ? 'success.main' : 'warning.main' }} />
-          </Tooltip>
-        </Paper>
+        <ClickAwayListener onClickAway={() => setMapSearchOpen(false)}>
+          <Box sx={{ maxWidth: 680, mx: 'auto', position: 'relative', pointerEvents: 'auto' }}>
+            <Paper
+              elevation={0}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.6,
+                height: 58,
+                px: 0.65,
+                borderRadius: 999,
+                bgcolor: 'rgba(255,255,255,0.92)',
+                border: '1px solid rgba(8,75,67,0.10)',
+                boxShadow: '0 18px 48px rgba(6,42,48,0.16)',
+                backdropFilter: 'blur(22px)',
+              }}
+            >
+              <Tooltip title="Menú">
+                <IconButton aria-label="Abrir menú" onClick={() => setMenuOpen(true)}>
+                  <MenuIcon />
+                </IconButton>
+              </Tooltip>
+              <Box
+                component="form"
+                onSubmit={handleInlineSearchSubmit}
+                sx={{
+                  flex: 1,
+                  minWidth: 0,
+                  height: 46,
+                  px: 1,
+                  borderRadius: 999,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.9,
+                  bgcolor: mapSearchOpen ? 'rgba(8,75,67,0.06)' : 'transparent',
+                  transition: 'background-color 160ms ease',
+                }}
+              >
+                <SearchIcon fontSize="small" color="action" />
+                <InputBase
+                  value={mapSearchQuery}
+                  onFocus={() => setMapSearchOpen(true)}
+                  onChange={(event) => {
+                    setMapSearchQuery(event.target.value);
+                    setMapSearchOpen(true);
+                  }}
+                  placeholder="Buscar en el mapa"
+                  inputProps={{ 'aria-label': 'Buscar en el mapa' }}
+                  sx={{
+                    flex: 1,
+                    minWidth: 0,
+                    '& input': {
+                      p: 0,
+                      fontWeight: 850,
+                      fontSize: { xs: 15, sm: 16 },
+                      color: 'text.primary',
+                    },
+                    '& input::placeholder': {
+                      opacity: 1,
+                      color: 'text.secondary',
+                    },
+                  }}
+                />
+                {mapSearchLoading ? (
+                  <CircularProgress size={18} />
+                ) : (
+                  mapSearchQuery && (
+                    <IconButton type="button" aria-label="Limpiar búsqueda" size="small" onClick={clearInlineSearch}>
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  )
+                )}
+              </Box>
+              <Tooltip title={firebaseReady ? 'Sincronizado' : 'Modo local'}>
+                <Box sx={{ width: 8, height: 8, mr: 1.2, borderRadius: 99, bgcolor: firebaseReady ? 'success.main' : 'warning.main' }} />
+              </Tooltip>
+            </Paper>
+
+            {showMapSearchPanel && (
+              <Paper
+                elevation={0}
+                sx={{
+                  mt: 1,
+                  maxHeight: { xs: 310, sm: 360 },
+                  overflow: 'auto',
+                  borderRadius: '24px',
+                  bgcolor: 'rgba(255,255,255,0.97)',
+                  border: '1px solid rgba(8,75,67,0.10)',
+                  boxShadow: '0 24px 60px rgba(6,42,48,0.18)',
+                  backdropFilter: 'blur(22px)',
+                }}
+              >
+                {mapSearchQuery.trim().length < 3 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1.6 }}>
+                    Escribe al menos 3 caracteres para buscar.
+                  </Typography>
+                ) : mapSearchError ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1.6 }}>
+                    {mapSearchError}
+                  </Typography>
+                ) : (
+                  <List dense disablePadding>
+                    {mapSearchResults.map((result, index) => (
+                      <ListItemButton
+                        key={`${result.id || `${result.name}-${result.lat}-${result.lng}`}-${index}`}
+                        onClick={() => handleInlineSearchSelect(result)}
+                        sx={{ px: 2, py: 1.15, borderTop: index ? '1px solid rgba(8,75,67,0.08)' : 0 }}
+                      >
+                        <ListItemText
+                          primary={result.name}
+                          secondary={result.address}
+                          primaryTypographyProps={{ fontWeight: 850, noWrap: true }}
+                          secondaryTypographyProps={{ noWrap: true }}
+                        />
+                      </ListItemButton>
+                    ))}
+                  </List>
+                )}
+              </Paper>
+            )}
+          </Box>
+        </ClickAwayListener>
       </Box>
 
       <Stack
@@ -654,7 +828,6 @@ export default function MainApp() {
         onClose={() => setLinkDialogOpen(false)}
         onImport={handleImportLink}
       />
-      <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={handleSearchSelect} searchBias={position} />
       <FilterDrawer open={filtersOpen} filters={filters} setFilters={setFilters} onClose={() => setFiltersOpen(false)} places={places} />
       <Drawer
         anchor="left"
