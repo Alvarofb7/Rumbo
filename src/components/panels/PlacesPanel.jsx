@@ -5,7 +5,6 @@ import {
   Divider,
   IconButton,
   MenuItem,
-  Paper,
   Select,
   Stack,
   Typography,
@@ -15,7 +14,6 @@ import EditIcon from '@mui/icons-material/Edit';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import NearMeIcon from '@mui/icons-material/NearMe';
-import PlaceIcon from '@mui/icons-material/Place';
 import { formatDistance } from '../../lib/geo';
 import { getStatusMeta, RatingText, SourceBadge, TagList, TypeIcon } from '../common/placeUtils';
 
@@ -27,7 +25,6 @@ const sortLabels = {
 };
 
 export default function PlacesPanel({
-  title = 'Cerca de ti',
   places,
   selectedPlace,
   filters,
@@ -46,37 +43,24 @@ export default function PlacesPanel({
   }, [selectedPlace?.id]);
 
   return (
-    <Stack spacing={1.5} sx={{ px: 2, pb: 2 }}>
-      <Stack direction="row" spacing={1.5} alignItems="center">
-        <PlaceIcon color="primary" />
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="h3">{title}</Typography>
-          <Typography color="text.secondary">{places.length} lugares filtrados</Typography>
-        </Box>
-        <IconButton onClick={onOpenFilters}>
-          <FilterListIcon />
-        </IconButton>
+    <Stack spacing={1.25} sx={{ px: 2, pb: 2 }}>
+      <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+        {[
+          [`${stats.saved} guardados`, 'primary.light'],
+          [`${stats.pending} por visitar`, 'secondary.light'],
+          [`${stats.visited} visitados`, 'rgba(11,155,114,0.12)'],
+        ].map(([label, bgcolor]) => (
+          <Chip key={label} label={label} size="small" sx={{ bgcolor, fontWeight: 750 }} />
+        ))}
       </Stack>
 
-      <Paper variant="outlined" sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', borderColor: 'rgba(0,97,111,0.12)' }}>
-        {[
-          ['Guardados', stats.saved],
-          ['Por visitar', stats.pending],
-          ['Visitados', stats.visited],
-        ].map(([label, value], index) => (
-          <Box key={label} sx={{ p: 1.25, textAlign: 'center', borderLeft: index ? '1px solid rgba(0,97,111,0.10)' : 0 }}>
-            <Typography variant="h4">{value}</Typography>
-            <Typography variant="caption" color="text.secondary">
-              {label}
-            </Typography>
-          </Box>
-        ))}
-      </Paper>
-
       <Stack direction="row" spacing={1} alignItems="center">
-        <Typography variant="h4" sx={{ flex: 1 }}>
-          Lista
+        <Typography variant="body2" color="text.secondary" fontWeight={750} sx={{ flex: 1 }}>
+          Orden
         </Typography>
+        <IconButton size="small" onClick={onOpenFilters}>
+          <FilterListIcon fontSize="small" />
+        </IconButton>
         <Select
           size="small"
           value={filters.sort}
@@ -94,7 +78,7 @@ export default function PlacesPanel({
 
       {filters.zone && <Chip label={`Zona: ${filters.zone}`} onDelete={() => setFilters((current) => ({ ...current, zone: '' }))} />}
 
-      <Stack divider={<Divider flexItem />} sx={{ borderTop: '1px solid rgba(0,97,111,0.10)' }}>
+      <Stack divider={<Divider flexItem />} sx={{ borderTop: '1px solid rgba(8,75,67,0.08)' }}>
         {places.length === 0 ? (
           <Box sx={{ py: 5, textAlign: 'center' }}>
             <Typography variant="h4">No hay lugares con estos filtros</Typography>

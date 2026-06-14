@@ -1,5 +1,4 @@
 import { Box, Button, Chip, Divider, Stack, Typography } from '@mui/material';
-import RouteIcon from '@mui/icons-material/Route';
 
 export default function TripsPanel({ places, onSelectZone }) {
   const zones = Object.entries(
@@ -24,14 +23,6 @@ export default function TripsPanel({ places, onSelectZone }) {
 
   return (
     <Stack spacing={2} sx={{ px: 2, pb: 2 }}>
-      <Stack direction="row" spacing={1.5} alignItems="center">
-        <RouteIcon color="primary" />
-        <Box>
-          <Typography variant="h3">Zonas</Typography>
-          <Typography color="text.secondary">Explora tus lugares guardados por ciudad, barrio o viaje.</Typography>
-        </Box>
-      </Stack>
-
       <Box>
         <Typography variant="h4" sx={{ mb: 1 }}>
           Zonas

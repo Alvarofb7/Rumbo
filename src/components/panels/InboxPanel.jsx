@@ -10,7 +10,6 @@ import {
 import AddLinkIcon from '@mui/icons-material/AddLink';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditLocationAltIcon from '@mui/icons-material/EditLocationAlt';
-import InboxIcon from '@mui/icons-material/Inbox';
 import LinkIcon from '@mui/icons-material/Link';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import { useMemo, useState } from 'react';
@@ -22,15 +21,13 @@ export default function InboxPanel({ inbox, onAddLink, onSave, onEdit, onDiscard
   const visibleItems = source === 'all' ? inbox : inbox.filter((item) => item.sourceType === source);
 
   return (
-    <Stack spacing={2} sx={{ px: 2, pb: 2 }}>
-      <Stack direction="row" spacing={1.5} alignItems="center">
-        <InboxIcon color="primary" />
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="h3">Por revisar</Typography>
-          <Typography color="text.secondary">{inbox.length} enlaces importados esperando decisión</Typography>
-        </Box>
-        <Button variant="contained" startIcon={<AddLinkIcon />} onClick={onAddLink}>
-          Pegar
+    <Stack spacing={1.5} sx={{ px: 2, pb: 2 }}>
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Typography variant="body2" color="text.secondary" fontWeight={750} sx={{ flex: 1 }}>
+          Enlaces importados
+        </Typography>
+        <Button variant="contained" size="small" startIcon={<AddLinkIcon />} onClick={onAddLink}>
+          Pegar enlace
         </Button>
       </Stack>
 

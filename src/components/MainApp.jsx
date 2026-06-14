@@ -1,19 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  AppBar,
   Avatar,
   Badge,
   Box,
-  BottomNavigation,
-  BottomNavigationAction,
   Button,
+  ButtonBase,
   Drawer,
   Fab,
   IconButton,
   Paper,
   Stack,
-  Toolbar,
   Tooltip,
   Typography,
   useMediaQuery,
@@ -26,8 +23,6 @@ import LinkIcon from '@mui/icons-material/Link';
 import MapIcon from '@mui/icons-material/Map';
 import FullscreenIcon from '@mui/icons-material/Fullscreen';
 import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
-import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import RouteIcon from '@mui/icons-material/Route';
 import SearchIcon from '@mui/icons-material/Search';
@@ -73,6 +68,13 @@ const initialFilters = {
   sort: 'nearest',
 };
 
+const navItems = [
+  { value: 'map', label: 'Mapa', icon: MapIcon },
+  { value: 'saved', label: 'Lugares', icon: BookmarkBorderIcon },
+  { value: 'inbox', label: 'Revisar', icon: InboxIcon },
+  { value: 'trips', label: 'Zonas', icon: RouteIcon },
+];
+
 function hasValidCoordinate(value) {
   return value !== '' && value !== null && value !== undefined && Number.isFinite(Number(value));
 }
@@ -98,8 +100,7 @@ export default function MainApp() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [panelCollapsed, setPanelCollapsed] = useState(false);
-  const [panelExpanded, setPanelExpanded] = useState(false);
+  const [sheetMode, setSheetMode] = useState('mid');
   const [toast, setToast] = useState('');
   const panelScrollRef = useRef(null);
 
@@ -107,8 +108,21 @@ export default function MainApp() {
   const inbox = inboxStore.items;
   const filteredPlaces = usePlaceFilters(places, filters, position);
   const selectedPlace = places.find((place) => place.id === selectedPlaceId) || null;
-  const mapHeight = panelCollapsed ? '100dvh' : panelExpanded ? '34dvh' : tab === 'map' ? '66dvh' : '56dvh';
-  const panelHeight = panelCollapsed ? '0px' : panelExpanded ? '68dvh' : tab === 'map' ? '36dvh' : '48dvh';
+  const sheetHidden = sheetMode === 'hidden';
+  const sheetHeight = sheetMode === 'full' ? 'calc(100dvh - 88px)' : '44dvh';
+  const floatingRight = { xs: 14, md: sheetHidden ? 18 : 454 };
+  const panelTitle = {
+    map: 'Cerca de ti',
+    saved: 'Lugares',
+    inbox: 'Revisar',
+    trips: 'Zonas',
+  }[tab];
+  const panelSubtitle = {
+    map: `${filteredPlaces.length} filtrados`,
+    saved: `${filteredPlaces.length} guardados`,
+    inbox: `${inbox.length} pendientes`,
+    trips: `${places.length} lugares`,
+  }[tab];
 
   const stats = useMemo(() => {
     return {
@@ -133,9 +147,20 @@ export default function MainApp() {
 
   function changeTab(nextTab) {
     if (nextTab !== tab) setToast('');
-    setPanelCollapsed(false);
-    setPanelExpanded(false);
+    setSheetMode(isDesktop ? 'full' : 'mid');
     setTab(nextTab);
+  }
+
+  function showSheet(mode = 'mid') {
+    setSheetMode(isDesktop ? 'full' : mode);
+  }
+
+  function toggleSheetSize() {
+    setSheetMode((current) => (current === 'full' ? 'mid' : 'full'));
+  }
+
+  function toggleMapOnly() {
+    setSheetMode((current) => (current === 'hidden' ? (isDesktop ? 'full' : 'mid') : 'hidden'));
   }
 
   function openCreatePlace(prefill = null) {
@@ -236,8 +261,7 @@ export default function MainApp() {
 
     setMapCenter({ lat: payload.lat, lng: payload.lng });
     setPlaceDialogOpen(false);
-    setPanelCollapsed(false);
-    setPanelExpanded(false);
+    showSheet('mid');
     setTab('map');
     return true;
   }
@@ -252,8 +276,7 @@ export default function MainApp() {
     const candidate = await importPlaceFromUrl(url);
     await inboxStore.addItem(candidate);
     setLinkDialogOpen(false);
-    setPanelCollapsed(false);
-    setPanelExpanded(false);
+    showSheet('mid');
     setTab('inbox');
     setToast('Enlace analizado y enviado a Revisar.');
   }
@@ -288,8 +311,7 @@ export default function MainApp() {
     await inboxStore.deleteItem(item.id);
     setSelectedPlaceId(created.id);
     setMapCenter({ lat: payload.lat, lng: payload.lng });
-    setPanelCollapsed(false);
-    setPanelExpanded(false);
+    showSheet('mid');
     setTab('map');
     setToast(`Recomendación guardada en el mapa${approximate ? ' con ubicación aproximada' : ''}.`);
   }
@@ -325,8 +347,7 @@ export default function MainApp() {
       setToast(`${result.name} será tu referencia de cercanía.`);
     }
     setTab('map');
-    setPanelCollapsed(false);
-    setPanelExpanded(false);
+    showSheet('mid');
   }
 
   function selectPlace(place, options = {}) {
@@ -334,8 +355,7 @@ export default function MainApp() {
     setSelectedPlaceId(place.id);
     setMapCenter({ lat: Number(place.lat), lng: Number(place.lng) });
     if (options.openMapTab !== false) setTab('map');
-    setPanelCollapsed(false);
-    setPanelExpanded(false);
+    showSheet('mid');
   }
 
   function centerOnUser() {
@@ -356,8 +376,7 @@ export default function MainApp() {
   function openZone(zone) {
     setFilters((current) => ({ ...current, zone, sort: zone ? 'zone' : 'nearest' }));
     setTab('map');
-    setPanelCollapsed(false);
-    setPanelExpanded(false);
+    showSheet('mid');
     setToast(zone ? `Mostrando lugares de ${zone}.` : 'Mostrando todas las zonas.');
   }
 
@@ -408,238 +427,241 @@ export default function MainApp() {
   }[tab];
 
   return (
-    <Box sx={{ height: '100dvh', bgcolor: 'background.default', overflow: 'hidden' }}>
+    <Box sx={{ height: '100dvh', bgcolor: 'background.default', overflow: 'hidden', position: 'relative' }}>
+      <Box sx={{ position: 'absolute', inset: 0, zIndex: 1 }}>
+        <MapPanel
+          places={filteredPlaces}
+          selectedPlace={selectedPlace}
+          userPosition={position}
+          center={mapCenter || position}
+          onDirections={openDirections}
+          onSelectPlace={(place) => {
+            selectPlace(place);
+          }}
+        />
+      </Box>
+
       <Box
         sx={{
-          display: 'grid',
-          gridTemplateRows: { xs: 'auto minmax(0, 1fr)', md: '1fr' },
-          gridTemplateColumns: { xs: '1fr', md: panelCollapsed ? '1fr 0px' : 'minmax(0, 1fr) 430px' },
-          height: '100%',
+          position: 'absolute',
+          top: 'calc(12px + env(safe-area-inset-top))',
+          left: { xs: 12, md: 18 },
+          right: { xs: 12, md: sheetHidden ? 18 : 454 },
+          zIndex: 960,
         }}
       >
-        <Box sx={{ position: 'relative', minHeight: 0, height: { xs: mapHeight, md: '100dvh' }, zIndex: 1 }}>
-          <MapPanel
-            places={filteredPlaces}
-            selectedPlace={selectedPlace}
-            userPosition={position}
-            center={mapCenter || position}
-            onDirections={openDirections}
-            onSelectPlace={(place) => {
-              selectPlace(place);
-            }}
-          />
-
-          <AppBar
-            position="absolute"
-            color="transparent"
-            elevation={0}
-            sx={{
-              top: 0,
-              zIndex: 900,
-              background: 'linear-gradient(180deg, rgba(247,244,237,0.98), rgba(247,244,237,0.84) 74%, rgba(247,244,237,0))',
-              pb: 5,
-              pointerEvents: 'none',
-            }}
-          >
-            <Toolbar sx={{ gap: 1, px: { xs: 1.5, sm: 2 }, pointerEvents: 'auto' }}>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
-                <Box component="img" src="/icons/icon-192.png" alt="Rumbo" sx={{ width: 36, height: 36, borderRadius: 1.6 }} />
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="h4" noWrap>
-                    Rumbo
-                  </Typography>
-                  <Stack direction="row" spacing={0.75} alignItems="center">
-                    <Box sx={{ width: 8, height: 8, borderRadius: 99, bgcolor: firebaseReady ? 'success.main' : 'warning.main' }} />
-                    <Typography variant="caption" color="text.secondary" noWrap>
-                      {firebaseReady ? 'Sincronizado' : 'Local'}
-                    </Typography>
-                  </Stack>
-                </Box>
-              </Stack>
-
-              <Box sx={{ flex: 1 }} />
-
-              <Tooltip title="Buscar">
-                <IconButton onClick={() => setSearchOpen(true)} sx={{ bgcolor: 'background.paper', boxShadow: '0 8px 22px rgba(6,42,48,0.10)' }}>
-                  <SearchIcon />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Perfil">
-                <IconButton onClick={() => setProfileOpen(true)} sx={{ p: 0.25 }}>
-                  <Avatar src={user.photoURL || ''} sx={{ width: 38, height: 38, bgcolor: 'primary.main' }}>
-                    {(user.displayName || user.email || 'R').charAt(0).toUpperCase()}
-                  </Avatar>
-                </IconButton>
-              </Tooltip>
-            </Toolbar>
-
-            <Box sx={{ px: 1.5, pointerEvents: 'auto' }}>
-              <Button
-                fullWidth
-                startIcon={<LinkIcon />}
-                onClick={() => setLinkDialogOpen(true)}
-                sx={{
-                  justifyContent: 'flex-start',
-                  minHeight: 48,
-                  bgcolor: 'background.paper',
-                  color: 'text.secondary',
-                  border: '1px solid rgba(0,97,111,0.14)',
-                  boxShadow: '0 10px 26px rgba(6,42,48,0.10)',
-                  '&:hover': { bgcolor: 'background.paper' },
-                }}
-              >
-                Buscar o pegar enlace
-              </Button>
-            </Box>
-          </AppBar>
-
-          <Stack sx={{ position: 'absolute', right: 12, top: 132, gap: 1, zIndex: 920 }}>
-            <Tooltip title={panelCollapsed ? 'Mostrar panel' : 'Ver solo mapa'}>
-              <IconButton
-                onClick={() => {
-                  setPanelCollapsed((current) => !current);
-                  setPanelExpanded(false);
-                }}
-                sx={{ bgcolor: 'background.paper', boxShadow: '0 8px 20px rgba(6,42,48,0.14)' }}
-              >
-                {panelCollapsed ? <FullscreenExitIcon /> : <FullscreenIcon />}
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Filtros">
-              <IconButton onClick={() => setFiltersOpen(true)} sx={{ bgcolor: 'background.paper', boxShadow: '0 8px 20px rgba(6,42,48,0.14)' }}>
-                <FilterListIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={locationStatus === 'ready' ? 'Mi ubicación' : 'Referencia de cercanía'}>
-              <IconButton onClick={centerOnUser} sx={{ bgcolor: 'background.paper', boxShadow: '0 8px 20px rgba(6,42,48,0.14)' }}>
-                <MyLocationIcon />
-              </IconButton>
-            </Tooltip>
-          </Stack>
-
-          <Button
-            startIcon={<MyLocationIcon />}
-            onClick={centerOnUser}
-            sx={{
-              position: 'absolute',
-              left: { xs: 14, md: 18 },
-              bottom: { xs: 20, md: 22 },
-              zIndex: 920,
-              minHeight: 42,
-              px: 1.6,
-              bgcolor: 'rgba(255,255,255,0.94)',
-              color: 'primary.dark',
-              border: '1px solid rgba(15,107,95,0.14)',
-              borderRadius: 999,
-              boxShadow: '0 10px 24px rgba(6,42,48,0.14)',
-              backdropFilter: 'blur(14px)',
-              '&:hover': { bgcolor: '#fff' },
-            }}
-          >
-            {locationStatus === 'ready' ? 'Mi ubicación' : 'Referencia'}
-          </Button>
-
-          <Fab
-            color="secondary"
-            aria-label="Añadir lugar"
-            onClick={() => openCreatePlace()}
-            sx={{
-              position: 'absolute',
-              right: { xs: 18, md: 24 },
-              bottom: { xs: 18, md: 24 },
-              zIndex: 930,
-              width: 64,
-              height: 64,
-              boxShadow: '0 14px 34px rgba(249,184,38,0.42)',
-            }}
-          >
-            <AddIcon fontSize="large" />
-          </Fab>
-        </Box>
-
         <Paper
           elevation={0}
           sx={{
-            minHeight: 0,
-            height: { xs: panelHeight, md: '100dvh' },
-            borderRadius: { xs: '26px 26px 0 0', md: 0 },
-            borderLeft: { md: '1px solid rgba(0,97,111,0.12)' },
-            mt: { xs: -2, md: 0 },
-            zIndex: 20,
-            overflow: 'hidden',
-            display: panelCollapsed ? 'none' : 'grid',
-            gridTemplateRows: 'minmax(0, 1fr) auto',
-            boxShadow: { xs: '0 -18px 46px rgba(6,42,48,0.16)', md: 'none' },
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.75,
+            height: 58,
+            px: 0.7,
+            borderRadius: 999,
+            bgcolor: 'rgba(255,255,255,0.92)',
+            border: '1px solid rgba(8,75,67,0.10)',
+            boxShadow: '0 18px 48px rgba(6,42,48,0.16)',
+            backdropFilter: 'blur(22px)',
           }}
         >
-          <Box ref={panelScrollRef} sx={{ display: panelCollapsed ? 'none' : 'block', overflow: 'auto', pt: { xs: 1, md: 2 }, pb: 1 }}>
-            {!isDesktop && (
-              <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, mb: 1, minHeight: 36, position: 'relative' }}>
-                <Box sx={{ width: 44, height: 5, borderRadius: 99, bgcolor: 'divider', mx: 'auto', position: 'absolute', left: '50%', transform: 'translateX(-50%)' }} />
-                <Button
-                  size="small"
-                  onClick={() => setPanelExpanded((current) => !current)}
-                  startIcon={panelExpanded ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
-                  sx={{ ml: 'auto', minHeight: 34, borderRadius: 999, color: 'text.secondary' }}
-                >
-                  {panelExpanded ? 'Menos' : 'Más'}
-                </Button>
-              </Stack>
-            )}
-            {locationStatus !== 'ready' && locationError && (
-              <Alert severity={locationStatus === 'manual' ? 'success' : 'info'} sx={{ mx: 2, mb: 1.5 }}>
-                {locationError}
-              </Alert>
-            )}
-            {toast && (
-              <Alert severity="success" onClose={() => setToast('')} sx={{ mx: 2, mb: 1.5 }}>
-                {toast}
-              </Alert>
-            )}
-            {panel}
-          </Box>
-
-          <Box sx={{ borderTop: '1px solid rgba(0,97,111,0.10)', bgcolor: 'background.paper', pb: 'env(safe-area-inset-bottom)' }}>
-            <BottomNavigation
-              value={tab}
-              onChange={(_, value) => changeTab(value)}
-              showLabels
-              sx={{
-                '& .MuiBottomNavigationAction-root': {
-                  mx: 0.35,
-                  my: 0.55,
-                  minWidth: 0,
-                  borderRadius: 2,
-                  color: 'text.secondary',
-                  transition: 'none',
-                },
-                '& .Mui-selected': {
-                  bgcolor: 'primary.light',
-                  color: 'primary.dark',
-                  fontWeight: 800,
-                },
-                '& .MuiBottomNavigationAction-label': {
-                  fontSize: 12,
-                  transition: 'none',
-                },
-              }}
-            >
-              <BottomNavigationAction label="Mapa" value="map" icon={<MapIcon />} />
-              <BottomNavigationAction label="Lugares" value="saved" icon={<BookmarkBorderIcon />} />
-              <BottomNavigationAction
-                label="Revisar"
-                value="inbox"
-                icon={
-                  <Badge badgeContent={inbox.length} color="primary">
-                    <InboxIcon />
-                  </Badge>
-                }
-              />
-              <BottomNavigationAction label="Zonas" value="trips" icon={<RouteIcon />} />
-            </BottomNavigation>
-          </Box>
+          <ButtonBase
+            aria-label="Buscar lugar o pegar enlace"
+            onClick={() => setLinkDialogOpen(true)}
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              height: 46,
+              px: 1.2,
+              borderRadius: 999,
+              justifyContent: 'flex-start',
+              color: 'text.secondary',
+              gap: 1,
+            }}
+          >
+            <SearchIcon fontSize="small" />
+            <Typography noWrap fontWeight={750}>
+              Buscar o pegar enlace
+            </Typography>
+          </ButtonBase>
+          <Tooltip title={firebaseReady ? 'Sincronizado' : 'Modo local'}>
+            <Box sx={{ width: 8, height: 8, borderRadius: 99, bgcolor: firebaseReady ? 'success.main' : 'warning.main' }} />
+          </Tooltip>
+          <Tooltip title="Perfil">
+            <IconButton onClick={() => setProfileOpen(true)} sx={{ p: 0.2 }}>
+              <Avatar src={user.photoURL || ''} sx={{ width: 42, height: 42, bgcolor: 'primary.main', fontWeight: 800 }}>
+                {(user.displayName || user.email || 'R').charAt(0).toUpperCase()}
+              </Avatar>
+            </IconButton>
+          </Tooltip>
         </Paper>
       </Box>
+
+      <Stack sx={{ position: 'absolute', right: floatingRight, top: 'calc(86px + env(safe-area-inset-top))', gap: 1, zIndex: 950 }}>
+        <Tooltip title={locationStatus === 'ready' ? 'Mi ubicación' : 'Referencia de cercanía'}>
+          <IconButton onClick={centerOnUser} sx={{ bgcolor: 'rgba(255,255,255,0.94)', boxShadow: '0 10px 26px rgba(6,42,48,0.14)', backdropFilter: 'blur(18px)' }}>
+            <MyLocationIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Filtros">
+          <IconButton onClick={() => setFiltersOpen(true)} sx={{ bgcolor: 'rgba(255,255,255,0.94)', boxShadow: '0 10px 26px rgba(6,42,48,0.14)', backdropFilter: 'blur(18px)' }}>
+            <FilterListIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={sheetHidden ? 'Mostrar panel' : 'Ver solo mapa'}>
+          <IconButton onClick={toggleMapOnly} sx={{ bgcolor: 'rgba(255,255,255,0.94)', boxShadow: '0 10px 26px rgba(6,42,48,0.14)', backdropFilter: 'blur(18px)' }}>
+            {sheetHidden ? <FullscreenExitIcon /> : <FullscreenIcon />}
+          </IconButton>
+        </Tooltip>
+      </Stack>
+
+      <Fab
+        color="secondary"
+        aria-label="Añadir lugar"
+        onClick={() => openCreatePlace()}
+        sx={{
+          position: 'absolute',
+          right: { xs: 18, md: sheetHidden ? 24 : 466 },
+          bottom: {
+            xs: sheetHidden ? 'calc(22px + env(safe-area-inset-bottom))' : sheetMode === 'full' ? 'calc(100dvh - 74px)' : 'calc(44dvh + 18px)',
+            md: 24,
+          },
+          display: sheetHidden ? 'inline-flex' : 'none',
+          zIndex: 955,
+          width: 60,
+          height: 60,
+          boxShadow: '0 16px 34px rgba(216,133,47,0.34)',
+        }}
+      >
+        <AddIcon fontSize="large" />
+      </Fab>
+
+      <Paper
+        elevation={0}
+        sx={{
+          position: 'absolute',
+          left: { xs: 0, md: 'auto' },
+          right: 0,
+          bottom: 0,
+          width: { xs: '100%', md: 430 },
+          height: { xs: sheetHidden ? 0 : sheetHeight, md: sheetHidden ? 0 : '100dvh' },
+          transform: sheetHidden ? 'translateY(calc(100% + 24px))' : 'translateY(0)',
+          transition: 'height 240ms ease, transform 240ms ease',
+          zIndex: 940,
+          overflow: 'hidden',
+          display: sheetHidden ? 'none' : 'grid',
+          gridTemplateRows: 'auto auto minmax(0, 1fr)',
+          borderRadius: { xs: '30px 30px 0 0', md: '28px 0 0 28px' },
+          bgcolor: 'rgba(255,255,255,0.96)',
+          border: '1px solid rgba(8,75,67,0.10)',
+          borderRight: { md: 0 },
+          boxShadow: { xs: '0 -24px 60px rgba(6,42,48,0.20)', md: '-22px 0 56px rgba(6,42,48,0.14)' },
+          backdropFilter: 'blur(24px)',
+        }}
+      >
+        <ButtonBase
+          aria-label={sheetMode === 'full' ? 'Reducir panel' : 'Ampliar panel'}
+          onClick={toggleSheetSize}
+          sx={{ height: { xs: 24, md: 18 }, display: { xs: 'grid', md: 'none' }, placeItems: 'center' }}
+        >
+          <Box sx={{ width: 46, height: 5, borderRadius: 99, bgcolor: 'rgba(6,42,48,0.16)' }} />
+        </ButtonBase>
+
+        <Box sx={{ px: 2, pt: { xs: 0, md: 2.2 }, pb: 1.25 }}>
+          <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 1.3 }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="h3" noWrap>
+                {panelTitle}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {panelSubtitle}
+              </Typography>
+            </Box>
+            <IconButton aria-label="Añadir lugar" onClick={() => openCreatePlace()} sx={{ bgcolor: 'secondary.light', color: 'secondary.contrastText' }}>
+              <AddIcon />
+            </IconButton>
+            <IconButton aria-label="Ocultar panel" onClick={() => setSheetMode('hidden')} sx={{ display: { xs: 'inline-flex', md: 'none' } }}>
+              <FullscreenIcon />
+            </IconButton>
+          </Stack>
+
+          <Box
+            role="tablist"
+            aria-label="Navegación principal"
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: 0.6,
+              p: 0.45,
+              borderRadius: 999,
+              bgcolor: 'rgba(8,75,67,0.06)',
+            }}
+          >
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const selected = tab === item.value;
+
+              return (
+                <ButtonBase
+                  key={item.value}
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => changeTab(item.value)}
+                  sx={{
+                    minWidth: 0,
+                    py: 0.85,
+                    px: 0.6,
+                    borderRadius: 999,
+                    color: selected ? 'primary.dark' : 'text.secondary',
+                    bgcolor: selected ? 'rgba(255,255,255,0.95)' : 'transparent',
+                    boxShadow: selected ? '0 8px 18px rgba(6,42,48,0.08)' : 'none',
+                    transition: 'background-color 140ms ease, box-shadow 140ms ease',
+                  }}
+                >
+                  <Stack spacing={0.25} alignItems="center" sx={{ minWidth: 0 }}>
+                    {item.value === 'inbox' ? (
+                      <Badge badgeContent={inbox.length} color="primary">
+                        <Icon fontSize="small" />
+                      </Badge>
+                    ) : (
+                      <Icon fontSize="small" />
+                    )}
+                    <Typography variant="caption" noWrap fontWeight={selected ? 800 : 650} sx={{ fontSize: 11 }}>
+                      {item.label}
+                    </Typography>
+                  </Stack>
+                </ButtonBase>
+              );
+            })}
+          </Box>
+        </Box>
+
+        <Box ref={panelScrollRef} sx={{ overflow: 'auto', minHeight: 0, pt: 0.5, pb: `calc(18px + env(safe-area-inset-bottom))` }}>
+          {locationStatus !== 'ready' && locationError && (
+            <Alert
+              severity={locationStatus === 'manual' ? 'success' : 'info'}
+              sx={{
+                mx: 2,
+                mb: 1.2,
+                py: 0.55,
+                borderRadius: 3,
+                bgcolor: 'rgba(15,107,95,0.08)',
+                color: 'text.secondary',
+                '& .MuiAlert-icon': { py: 0.35, color: 'primary.main' },
+                '& .MuiAlert-message': { py: 0, fontSize: 13, lineHeight: 1.35 },
+              }}
+            >
+              {locationError}
+            </Alert>
+          )}
+          {toast && (
+            <Alert severity="success" onClose={() => setToast('')} sx={{ mx: 2, mb: 1.5, borderRadius: 3 }}>
+              {toast}
+            </Alert>
+          )}
+          {panel}
+        </Box>
+      </Paper>
 
       <PlaceDialog
         open={placeDialogOpen}
