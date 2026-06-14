@@ -6,8 +6,8 @@ import { formatDistance } from '../../lib/geo';
 import { getPlaceColor, getStatusMeta } from '../common/placeUtils';
 
 const localNameTileLayer = {
-  url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+  attribution: '&copy; OpenStreetMap &copy; CARTO',
 };
 
 function Recenter({ center }) {
@@ -39,6 +39,8 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
         <TileLayer
           attribution={localNameTileLayer.attribution}
           url={localNameTileLayer.url}
+          subdomains="abcd"
+          detectRetina
           className="rumbo-map-tiles"
         />
         <Recenter center={safeCenter} />
@@ -97,7 +99,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
         })}
       </MapContainer>
       <Box className="rumbo-map-attribution">
-        © OpenStreetMap
+        © OSM · CARTO
       </Box>
     </Box>
   );

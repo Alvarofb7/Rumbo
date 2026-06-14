@@ -9,16 +9,18 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  Slider,
+  IconButton,
+  Paper,
+  Rating,
   Stack,
   TextField,
   Typography,
   useMediaQuery,
 } from '@mui/material';
+import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
+import CloseIcon from '@mui/icons-material/Close';
+import LinkIcon from '@mui/icons-material/Link';
+import PlaceIcon from '@mui/icons-material/Place';
 import { useTheme } from '@mui/material/styles';
 import { sourceMeta, statusOptions, tagOptions } from '../../data/demoData';
 import { searchLocation } from '../../lib/geo';
@@ -36,7 +38,51 @@ const blankPlace = {
   sourceType: 'manual',
   sourceUrl: '',
   resolvedUrl: '',
+  imageUrl: '',
 };
+
+function compressImageFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('Elige un archivo de imagen.'));
+      return;
+    }
+
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    image.onload = () => {
+      const maxSide = 1200;
+      const ratio = Math.min(1, maxSide / Math.max(image.width, image.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(image.width * ratio);
+      canvas.height = Math.round(image.height * ratio);
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(objectUrl);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error('No he podido preparar la foto.'));
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('No he podido leer la foto.'));
+          reader.readAsDataURL(blob);
+        },
+        'image/jpeg',
+        0.78,
+      );
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('No he podido abrir la imagen.'));
+    };
+    image.src = objectUrl;
+  });
+}
 
 export default function PlaceDialog({ open, place, onClose, onSave }) {
   const theme = useTheme();
@@ -46,6 +92,8 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
   const [locationOptions, setLocationOptions] = useState([]);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState('');
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -54,6 +102,8 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
       setLocationQuery(nextDraft.address || nextDraft.name || '');
       setLocationOptions([]);
       setLocationError('');
+      setPhotoError('');
+      setPhotoLoading(false);
     }
   }, [open, place]);
 
@@ -114,6 +164,23 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
     setLocationOptions([]);
   }
 
+  async function handlePhotoFile(event) {
+    const [file] = event.target.files || [];
+    event.target.value = '';
+    if (!file) return;
+
+    setPhotoError('');
+    setPhotoLoading(true);
+    try {
+      const imageUrl = await compressImageFile(file);
+      update('imageUrl', imageUrl);
+    } catch (error) {
+      setPhotoError(error.message);
+    } finally {
+      setPhotoLoading(false);
+    }
+  }
+
   function handleSave() {
     if (!draft.name.trim()) return;
     onSave({
@@ -123,120 +190,220 @@ export default function PlaceDialog({ open, place, onClose, onSave }) {
       zone: draft.zone.trim(),
       sourceUrl: draft.sourceUrl.trim(),
       resolvedUrl: draft.resolvedUrl || '',
-      notes: draft.notes.trim(),
+      notes: draft.notes?.trim?.() || '',
+      imageUrl: draft.imageUrl?.trim?.() || '',
     });
   }
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
-      <DialogTitle>{draft.id ? 'Editar lugar' : 'Nuevo lugar'}</DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={2} sx={{ pt: 1 }}>
-          <Autocomplete
-            filterOptions={(options) => options}
-            options={locationOptions}
-            getOptionLabel={(option) => (typeof option === 'string' ? option : `${option.name} · ${option.address}`)}
-            inputValue={locationQuery}
-            onInputChange={(_, value) => setLocationQuery(value)}
-            onChange={(_, value) => applyLocation(value)}
-            loading={locationLoading}
-            noOptionsText={locationQuery.trim().length < 3 ? 'Escribe al menos 3 caracteres' : 'Sin resultados'}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Buscar sitio en el mapa"
-                placeholder="Nombre, dirección, barrio..."
-                helperText="Elige un resultado para fijar el punto exacto en el mapa."
-              />
-            )}
-          />
-
-          {locationLoading && (
-            <Stack direction="row" spacing={1} alignItems="center">
-              <CircularProgress size={18} />
-              <Typography variant="body2" color="text.secondary">
-                Buscando lugares...
-              </Typography>
-            </Stack>
-          )}
-          {locationError && <Alert severity="warning">{locationError}</Alert>}
-          {hasSelectedLocation() && (
-            <Alert severity="success">
-              Ubicación seleccionada: {draft.address || `${Number(draft.lat).toFixed(5)}, ${Number(draft.lng).toFixed(5)}`}
-            </Alert>
-          )}
-
-          <TextField label="Nombre" value={draft.name} onChange={(event) => update('name', event.target.value)} required fullWidth />
-          <TextField label="Dirección" value={draft.address} onChange={(event) => update('address', event.target.value)} fullWidth />
-
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-            <TextField label="Zona o barrio" value={draft.zone} onChange={(event) => update('zone', event.target.value)} fullWidth />
-            <FormControl fullWidth>
-              <InputLabel>Estado</InputLabel>
-              <Select label="Estado" value={draft.status} onChange={(event) => update('status', event.target.value)}>
-                {statusOptions.map((status) => (
-                  <MenuItem key={status.value} value={status.value}>
-                    {status.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Stack>
-
-          <Autocomplete
-            multiple
-            freeSolo
-            options={tagOptions}
-            value={draft.tags || []}
-            onChange={(_, value) => update('tags', value)}
-            renderInput={(params) => <TextField {...params} label="Etiquetas" placeholder="Bar, restaurante, cita..." />}
-          />
-
-          <Box>
-            <Typography fontWeight={700}>Ranking personal</Typography>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Slider
-                min={0}
-                max={5}
-                step={0.1}
-                value={Number(draft.rating || 0)}
-                onChange={(_, value) => update('rating', value)}
-                valueLabelDisplay="auto"
-              />
-              <Typography fontWeight={800} sx={{ width: 38, textAlign: 'right' }}>
-                {Number(draft.rating || 0).toFixed(1)}
-              </Typography>
-            </Stack>
+      <DialogTitle sx={{ pb: 1 }}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="h3">{draft.id ? 'Editar lugar' : 'Guardar lugar'}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Primero fija el sitio; después añade tu ranking y foto.
+            </Typography>
           </Box>
+          <IconButton aria-label="Cerrar formulario" onClick={onClose}>
+            <CloseIcon />
+          </IconButton>
+        </Stack>
+      </DialogTitle>
+      <DialogContent dividers sx={{ bgcolor: 'rgba(247,244,237,0.55)' }}>
+        <Stack spacing={1.6} sx={{ pt: 1 }}>
+          <Paper variant="outlined" sx={{ p: 1.4, borderRadius: 4, borderColor: 'rgba(8,75,67,0.10)' }}>
+            <Stack spacing={1.2}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <PlaceIcon color={hasSelectedLocation() ? 'success' : 'primary'} />
+                <Box>
+                  <Typography fontWeight={850}>Ubicación</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Busca por nombre o dirección. El mapa se ajusta solo.
+                  </Typography>
+                </Box>
+              </Stack>
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-            <FormControl fullWidth>
-              <InputLabel>Origen</InputLabel>
-              <Select label="Origen" value={draft.sourceType} onChange={(event) => update('sourceType', event.target.value)}>
-                {Object.entries(sourceMeta).map(([value, meta]) => (
-                  <MenuItem key={value} value={value}>
-                    {meta.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField label="Enlace original" value={draft.sourceUrl} onChange={(event) => update('sourceUrl', event.target.value)} fullWidth />
-          </Stack>
+              <Autocomplete
+                filterOptions={(options) => options}
+                options={locationOptions}
+                getOptionLabel={(option) => (typeof option === 'string' ? option : `${option.name} · ${option.address}`)}
+                inputValue={locationQuery}
+                onInputChange={(_, value) => setLocationQuery(value)}
+                onChange={(_, value) => applyLocation(value)}
+                loading={locationLoading}
+                noOptionsText={locationQuery.trim().length < 3 ? 'Escribe al menos 3 caracteres' : 'Sin resultados'}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Buscar sitio"
+                    placeholder="Ojalá Tapas Sevilla"
+                    helperText={hasSelectedLocation() ? draft.address : 'Elige un resultado para fijarlo en el mapa.'}
+                  />
+                )}
+              />
 
-          <TextField
-            label="Notas"
-            value={draft.notes}
-            onChange={(event) => update('notes', event.target.value)}
-            multiline
-            minRows={3}
-            fullWidth
-          />
+              {locationLoading && (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <CircularProgress size={18} />
+                  <Typography variant="body2" color="text.secondary">
+                    Buscando lugares...
+                  </Typography>
+                </Stack>
+              )}
+              {locationError && <Alert severity="warning">{locationError}</Alert>}
+              {hasSelectedLocation() && (
+                <Alert severity="success" sx={{ py: 0.5 }}>
+                  Sitio localizado correctamente.
+                </Alert>
+              )}
+            </Stack>
+          </Paper>
+
+          <Paper variant="outlined" sx={{ p: 1.4, borderRadius: 4, borderColor: 'rgba(8,75,67,0.10)' }}>
+            <Stack spacing={1.4}>
+              <TextField label="Nombre" value={draft.name} onChange={(event) => update('name', event.target.value)} required fullWidth />
+              <TextField label="Zona o barrio" value={draft.zone} onChange={(event) => update('zone', event.target.value)} fullWidth />
+
+              <Box>
+                <Typography fontWeight={850} sx={{ mb: 0.8 }}>
+                  Estado
+                </Typography>
+                <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap">
+                  {statusOptions
+                    .filter((status) => status.value !== 'discarded')
+                    .map((status) => {
+                      const selected = draft.status === status.value;
+                      return (
+                        <Button
+                          key={status.value}
+                          variant={selected ? 'contained' : 'outlined'}
+                          onClick={() => update('status', status.value)}
+                          sx={{
+                            minHeight: 38,
+                            px: 1.4,
+                            bgcolor: selected ? status.color : 'transparent',
+                            borderColor: `${status.color}55`,
+                            color: selected ? '#fff' : status.color,
+                            '&:hover': { bgcolor: selected ? status.color : `${status.color}10` },
+                          }}
+                        >
+                          {status.label}
+                        </Button>
+                      );
+                    })}
+                </Stack>
+              </Box>
+
+              <Box>
+                <Typography fontWeight={850} sx={{ mb: 0.5 }}>
+                  Ranking personal
+                </Typography>
+                <Stack direction="row" spacing={1.4} alignItems="center">
+                  <Rating
+                    precision={0.5}
+                    value={Number(draft.rating || 0)}
+                    onChange={(_, value) => update('rating', value || 0)}
+                    getLabelText={(value) => `${value} estrellas`}
+                    size="large"
+                  />
+                  <Typography fontWeight={900} color="secondary.dark">
+                    {Number(draft.rating || 0).toFixed(1)}
+                  </Typography>
+                </Stack>
+              </Box>
+
+              <Autocomplete
+                multiple
+                freeSolo
+                options={tagOptions}
+                value={draft.tags || []}
+                onChange={(_, value) => update('tags', value)}
+                renderInput={(params) => <TextField {...params} label="Etiquetas" placeholder="Bar, terraza, cita..." />}
+              />
+            </Stack>
+          </Paper>
+
+          <Paper variant="outlined" sx={{ p: 1.4, borderRadius: 4, borderColor: 'rgba(8,75,67,0.10)' }}>
+            <Stack spacing={1.2}>
+              <Typography fontWeight={850}>Foto</Typography>
+              {draft.imageUrl ? (
+                <Box sx={{ position: 'relative' }}>
+                  <Box
+                    component="img"
+                    src={draft.imageUrl}
+                    alt=""
+                    sx={{ width: '100%', height: 172, objectFit: 'cover', borderRadius: 3, bgcolor: 'primary.light' }}
+                  />
+                  <IconButton
+                    aria-label="Quitar foto"
+                    onClick={() => update('imageUrl', '')}
+                    sx={{ position: 'absolute', top: 8, right: 8, bgcolor: 'rgba(255,255,255,0.9)' }}
+                  >
+                    <CloseIcon />
+                  </IconButton>
+                </Box>
+              ) : (
+                <Button component="label" variant="outlined" startIcon={<AddPhotoAlternateIcon />} disabled={photoLoading}>
+                  {photoLoading ? 'Preparando foto...' : 'Añadir foto'}
+                  <input hidden accept="image/*" type="file" onChange={handlePhotoFile} />
+                </Button>
+              )}
+              {photoError && <Alert severity="warning">{photoError}</Alert>}
+              <TextField
+                label="O pega una URL de imagen"
+                value={draft.imageUrl?.startsWith('data:') ? '' : draft.imageUrl || ''}
+                onChange={(event) => update('imageUrl', event.target.value)}
+                placeholder="https://..."
+                fullWidth
+              />
+            </Stack>
+          </Paper>
+
+          <Paper variant="outlined" sx={{ p: 1.4, borderRadius: 4, borderColor: 'rgba(8,75,67,0.10)' }}>
+            <Stack spacing={1.2}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <LinkIcon color="primary" />
+                <Box>
+                  <Typography fontWeight={850}>Referencia</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Opcional: enlace original de Maps, Tripadvisor o Instagram.
+                  </Typography>
+                </Box>
+              </Stack>
+
+              <TextField label="Enlace original" value={draft.sourceUrl} onChange={(event) => update('sourceUrl', event.target.value)} fullWidth />
+
+              <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap">
+                {Object.entries(sourceMeta).map(([value, meta]) => {
+                  const selected = draft.sourceType === value;
+                  return (
+                    <Button
+                      key={value}
+                      size="small"
+                      variant={selected ? 'contained' : 'outlined'}
+                      onClick={() => update('sourceType', value)}
+                      sx={{
+                        minHeight: 34,
+                        bgcolor: selected ? meta.color : 'transparent',
+                        borderColor: `${meta.color}55`,
+                        color: selected ? '#fff' : meta.color,
+                        '&:hover': { bgcolor: selected ? meta.color : `${meta.color}10` },
+                      }}
+                    >
+                      {meta.label}
+                    </Button>
+                  );
+                })}
+              </Stack>
+            </Stack>
+          </Paper>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2, pb: `calc(16px + env(safe-area-inset-bottom))` }}>
         <Button onClick={onClose}>Cancelar</Button>
-        <Button variant="contained" onClick={handleSave} disabled={!draft.name.trim()}>
-          Guardar
+        <Button variant="contained" onClick={handleSave} disabled={!draft.name.trim() || photoLoading}>
+          Guardar lugar
         </Button>
       </DialogActions>
     </Dialog>

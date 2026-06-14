@@ -36,11 +36,11 @@ textarea {
   width: 100%;
   height: 100%;
   font-family: Inter, system-ui, sans-serif;
-  background: #edf2ed;
+  background: #eef1ea;
 }
 
 .rumbo-map-tiles {
-  filter: saturate(0.82) contrast(0.96) brightness(1.03);
+  filter: saturate(0.92) contrast(0.98) brightness(1.02);
 }
 
 .rumbo-map-attribution {
@@ -50,8 +50,8 @@ textarea {
   z-index: 500;
   padding: 3px 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  color: rgba(6, 42, 48, 0.58);
+  background: rgba(255, 255, 255, 0.58);
+  color: rgba(6, 42, 48, 0.46);
   font-size: 10px;
   font-weight: 600;
   line-height: 1;
