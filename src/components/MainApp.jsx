@@ -532,7 +532,6 @@ export default function MainApp() {
   function centerOnUser() {
     setSelectedPlaceId(null);
     setMapCenter({ lat: position.lat, lng: position.lng });
-    setToast(locationStatus === 'ready' ? 'Centrado en tu ubicación.' : 'Centrado en tu referencia.');
   }
 
   function openDirections(place) {
