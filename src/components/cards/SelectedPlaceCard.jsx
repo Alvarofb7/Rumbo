@@ -1,12 +1,16 @@
-import { Box, Button, IconButton, Paper, Stack, Typography } from '@mui/material';
+import { Box, Button, Chip, IconButton, Paper, Stack, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
 import NearMeIcon from '@mui/icons-material/NearMe';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { sourceMeta } from '../../data/demoData';
 import { formatDistance } from '../../lib/geo';
-import { RatingText, SourceBadge, TagList, TypeIcon } from '../common/placeUtils';
+import { CategoryBadge, getStatusMeta, RatingText, TagList } from '../common/placeUtils';
 
 export default function SelectedPlaceCard({ place, onClose, onDirections, onEdit }) {
   if (!place) return null;
+  const statusMeta = getStatusMeta(place.status);
+  const source = sourceMeta[place.sourceType] || sourceMeta.manual;
 
   return (
     <Paper
@@ -26,31 +30,7 @@ export default function SelectedPlaceCard({ place, onClose, onDirections, onEdit
         backdropFilter: 'blur(24px)',
       }}
     >
-      <Stack direction="row" spacing={1.2} alignItems="stretch">
-        {place.imageUrl ? (
-          <Box
-            component="img"
-            src={place.imageUrl}
-            alt=""
-            sx={{ width: 78, minWidth: 78, borderRadius: 3, objectFit: 'cover', bgcolor: 'primary.light' }}
-          />
-        ) : (
-          <Box
-            sx={{
-              width: 78,
-              minWidth: 78,
-              borderRadius: 3,
-              display: 'grid',
-              placeItems: 'center',
-              bgcolor: 'rgba(15,107,95,0.10)',
-              color: 'primary.main',
-            }}
-          >
-            <TypeIcon tags={place.tags} />
-          </Box>
-        )}
-
-        <Stack spacing={0.65} sx={{ minWidth: 0, flex: 1 }}>
+      <Stack spacing={0.65} sx={{ minWidth: 0 }}>
           <Stack direction="row" spacing={1} alignItems="flex-start">
             <Box sx={{ minWidth: 0, flex: 1 }}>
               <Typography variant="h4" noWrap>
@@ -65,11 +45,26 @@ export default function SelectedPlaceCard({ place, onClose, onDirections, onEdit
             </IconButton>
           </Stack>
 
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={0.7} alignItems="center" flexWrap="wrap" useFlexGap>
             <RatingText rating={place.rating} />
-            <SourceBadge sourceType={place.sourceType} compact />
+            <CategoryBadge category={place.category} />
+            <Chip size="small" label={statusMeta.label} sx={{ color: statusMeta.color, bgcolor: `${statusMeta.color}14`, fontWeight: 750 }} />
           </Stack>
-          <TagList tags={place.tags} limit={2} />
+          <TagList tags={place.tags} limit={3} />
+
+          {place.sourceUrl && (
+            <Button
+              component="a"
+              href={place.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              size="small"
+              startIcon={<OpenInNewIcon />}
+              sx={{ alignSelf: 'flex-start', minHeight: 30, px: 0.5 }}
+            >
+              Abrir en {source.label}
+            </Button>
+          )}
 
           <Stack direction="row" spacing={1} sx={{ pt: 0.3 }}>
             <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => onEdit(place)} sx={{ flex: 1 }}>
@@ -79,7 +74,6 @@ export default function SelectedPlaceCard({ place, onClose, onDirections, onEdit
               Ir
             </Button>
           </Stack>
-        </Stack>
       </Stack>
     </Paper>
   );

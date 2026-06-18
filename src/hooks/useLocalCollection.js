@@ -1,19 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export function useLocalCollection(storageKey, initialItems = []) {
+const identity = (item) => item;
+
+export function useLocalCollection(storageKey, initialItems = [], normalizeItem = identity) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const stored = localStorage.getItem(storageKey);
     if (stored) {
-      setItems(JSON.parse(stored));
+      const normalized = JSON.parse(stored).map(normalizeItem);
+      setItems(normalized);
+      localStorage.setItem(storageKey, JSON.stringify(normalized));
     } else {
-      setItems(initialItems);
-      localStorage.setItem(storageKey, JSON.stringify(initialItems));
+      const normalized = initialItems.map(normalizeItem);
+      setItems(normalized);
+      localStorage.setItem(storageKey, JSON.stringify(normalized));
     }
     setLoading(false);
-  }, [initialItems, storageKey]);
+  }, [initialItems, normalizeItem, storageKey]);
 
   const persist = useCallback(
     (nextItems) => {
@@ -26,25 +31,27 @@ export function useLocalCollection(storageKey, initialItems = []) {
   const addItem = useCallback(
     async (item) => {
       const now = new Date().toISOString();
-      const nextItem = {
+      const nextItem = normalizeItem({
         ...item,
         id: item.id || crypto.randomUUID(),
         createdAt: item.createdAt || now,
         updatedAt: now,
-      };
+      });
       persist([nextItem, ...items]);
       return nextItem;
     },
-    [items, persist],
+    [items, normalizeItem, persist],
   );
 
   const updateItem = useCallback(
     async (id, patch) => {
-      const nextItems = items.map((item) => (item.id === id ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item));
+      const nextItems = items.map((item) =>
+        item.id === id ? normalizeItem({ ...item, ...patch, updatedAt: new Date().toISOString() }) : item,
+      );
       persist(nextItems);
       return nextItems.find((item) => item.id === id);
     },
-    [items, persist],
+    [items, normalizeItem, persist],
   );
 
   const deleteItem = useCallback(

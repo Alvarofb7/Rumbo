@@ -41,6 +41,7 @@ import {
   searchLocation,
 } from '../lib/googlePlaces';
 import { importPlaceFromUrl } from '../lib/placeImporter';
+import { getPlaceRecordMigration, sanitizePlaceRecord } from '../lib/placeData';
 import FilterDrawer from './filters/FilterDrawer';
 import InboxPanel from './panels/InboxPanel';
 import LinkImportDialog from './dialogs/LinkImportDialog';
@@ -56,15 +57,15 @@ const emptyPlace = {
   zone: '',
   lat: '',
   lng: '',
+  category: 'other',
   tags: [],
   rating: 0,
   status: 'wishlist',
-  notes: '',
   sourceType: 'manual',
   sourceUrl: '',
   resolvedUrl: '',
-  imageUrl: '',
   providerPlaceId: '',
+  providerType: '',
 };
 
 const initialFilters = {
@@ -146,8 +147,14 @@ export default function MainApp() {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const { position, status: locationStatus, error: locationError, setManualPosition } = useUserLocation();
-  const placesStore = useUserCollection(user, 'places', demoPlaces);
-  const inboxStore = useUserCollection(user, 'inbox', demoInbox);
+  const placesStore = useUserCollection(user, 'places', demoPlaces, {
+    normalizeItem: sanitizePlaceRecord,
+    getMigration: getPlaceRecordMigration,
+  });
+  const inboxStore = useUserCollection(user, 'inbox', demoInbox, {
+    normalizeItem: sanitizePlaceRecord,
+    getMigration: getPlaceRecordMigration,
+  });
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
   const [mapCenter, setMapCenter] = useState(null);
   const [mapViewport, setMapViewport] = useState(null);
@@ -227,8 +234,8 @@ export default function MainApp() {
       try {
         const results = await searchLocation(query, {
           ...mapSearchBias,
-          mode: 'destination',
           session: mapSearchSessionRef.current,
+          allowTextSearch: true,
         });
         if (!ignore) {
           setMapSearchResults(results);
@@ -290,7 +297,6 @@ export default function MainApp() {
         const session = createPlaceSearchSession();
         const [result] = await searchLocation(query, {
           ...mapSearchBias,
-          mode: 'place',
           session,
           allowTextSearch: true,
         });
@@ -331,16 +337,17 @@ export default function MainApp() {
     }
 
     return {
-      payload: {
+      payload: sanitizePlaceRecord({
         ...place,
         address: place.address || locationResult?.address || '',
         zone: place.zone || locationResult?.zone || '',
         lat: coordinates.lat,
         lng: coordinates.lng,
+        category: place.category && place.category !== 'other' ? place.category : locationResult?.category || place.category || 'other',
+        providerType: place.providerType || locationResult?.providerType || '',
         rating: Number(place.rating || 0),
         tags: place.tags || [],
-        imageUrl: place.imageUrl || '',
-      },
+      }),
       approximate,
     };
   }
@@ -395,14 +402,14 @@ export default function MainApp() {
       zone: item.zone,
       lat: item.lat || '',
       lng: item.lng || '',
+      category: item.category || 'other',
       tags: item.tags || [],
       rating: item.rating || 0,
       status: 'wishlist',
-      notes: item.notes || '',
       sourceType: item.sourceType,
       sourceUrl: item.sourceUrl,
       resolvedUrl: item.resolvedUrl || '',
-      imageUrl: item.imageUrl || '',
+      providerType: item.providerType || '',
     };
     let result;
 
@@ -430,13 +437,13 @@ export default function MainApp() {
       zone: item.zone,
       lat: item.lat || '',
       lng: item.lng || '',
+      category: item.category || 'other',
       tags: item.tags || [],
       rating: item.rating || 0,
-      notes: item.notes || '',
       sourceType: item.sourceType,
       sourceUrl: item.sourceUrl,
       resolvedUrl: item.resolvedUrl || '',
-      imageUrl: item.imageUrl || '',
+      providerType: item.providerType || '',
       inboxId: item.id,
     });
   }
@@ -493,7 +500,6 @@ export default function MainApp() {
     try {
       const results = await searchLocation(query, {
         ...mapSearchBias,
-        mode: 'destination',
         session: mapSearchSessionRef.current,
         allowTextSearch: true,
       });

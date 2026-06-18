@@ -1,4 +1,5 @@
 import { hasGoogleMapsConfig, importGoogleLibrary } from './googleMaps';
+import { categoryFromGoogleType } from './placeData';
 
 const zoneTypePriority = [
   'neighborhood',
@@ -61,7 +62,8 @@ function placeToResult(place) {
     lat: Number(lat),
     lng: Number(lng),
     type: place.primaryType || place.types?.[0] || '',
-    category: 'google_places',
+    providerType: place.primaryType || place.types?.[0] || '',
+    category: categoryFromGoogleType(place.primaryType || place.types?.[0] || ''),
     source: 'google-places',
     resolved: true,
   };
@@ -94,8 +96,7 @@ async function textSearch(query, options = {}) {
   };
 
   if (bounds) {
-    if (options.mode === 'place') request.locationRestriction = bounds;
-    else request.locationBias = bounds;
+    request.locationBias = bounds;
   }
 
   const { places = [] } = await Place.searchByText(request);
@@ -120,8 +121,7 @@ export async function searchLocation(query, options = {}) {
 
     if (hasCoordinates(center)) request.origin = { lat: Number(center.lat), lng: Number(center.lng) };
     if (bounds) {
-      if (options.mode === 'place') request.locationRestriction = bounds;
-      else request.locationBias = bounds;
+      request.locationBias = bounds;
     }
 
     const { suggestions = [] } = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
@@ -136,6 +136,8 @@ export async function searchLocation(query, options = {}) {
         address: textValue(prediction.secondaryText),
         distanceMeters: Number(prediction.distanceMeters || 0),
         types: prediction.types || [],
+        providerType: prediction.types?.[0] || '',
+        category: categoryFromGoogleType(prediction.types?.[0] || ''),
         source: 'google-places',
         prediction,
       }));

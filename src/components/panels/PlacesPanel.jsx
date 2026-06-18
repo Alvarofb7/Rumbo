@@ -14,7 +14,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import NearMeIcon from '@mui/icons-material/NearMe';
 import { formatDistance } from '../../lib/geo';
-import { getStatusMeta, RatingText, TagList, TypeIcon } from '../common/placeUtils';
+import { CategoryBadge, getStatusMeta, RatingText, TagList, TypeIcon } from '../common/placeUtils';
 
 const sortLabels = {
   nearest: 'Cercanía',
@@ -104,7 +104,7 @@ export default function PlacesPanel({
                       placeItems: 'center',
                     }}
                   >
-                    <TypeIcon tags={place.tags} />
+                    <TypeIcon category={place.category} />
                   </Box>
                   <Stack spacing={0.55} sx={{ minWidth: 0, flex: 1 }}>
                     <Stack direction="row" spacing={1} alignItems="center">
@@ -121,6 +121,7 @@ export default function PlacesPanel({
                     {(place.tags || []).length > 0 && <TagList tags={place.tags} limit={2} />}
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                       <RatingText rating={place.rating} />
+                      <CategoryBadge category={place.category} />
                       <Chip size="small" label={statusMeta.label} sx={{ color: statusMeta.color, bgcolor: `${statusMeta.color}14` }} />
                     </Stack>
                   </Stack>
@@ -135,10 +136,10 @@ export default function PlacesPanel({
                     >
                       <NearMeIcon fontSize="small" />
                     </IconButton>
-                    <IconButton size="small" onClick={(event) => { event.stopPropagation(); onEdit(place); }}>
+                    <IconButton size="small" aria-label={`Editar ${place.name}`} onClick={(event) => { event.stopPropagation(); onEdit(place); }}>
                       <EditIcon fontSize="small" />
                     </IconButton>
-                    <IconButton size="small" onClick={(event) => { event.stopPropagation(); onDelete(place.id); }}>
+                    <IconButton size="small" aria-label={`Eliminar ${place.name}`} onClick={(event) => { event.stopPropagation(); onDelete(place.id); }}>
                       <DeleteOutlineIcon fontSize="small" />
                     </IconButton>
                   </Stack>
