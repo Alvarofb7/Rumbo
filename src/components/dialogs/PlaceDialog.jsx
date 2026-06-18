@@ -89,10 +89,12 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
   const [locationError, setLocationError] = useState('');
   const [detailsOpen, setDetailsOpen] = useState(false);
   const fixedLocationQueryRef = useRef('');
+  const locationRequestIdRef = useRef(0);
   const searchSessionRef = useRef(createPlaceSearchSession());
 
   useEffect(() => {
     if (open) {
+      locationRequestIdRef.current += 1;
       resetPlaceSearchSession(searchSessionRef.current);
       const nextDraft = { ...blankPlace, ...place };
       const initialLocationQuery = nextDraft.address || nextDraft.name || '';
@@ -102,6 +104,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       setDraft(nextDraft);
       setLocationQuery(initialLocationQuery);
       setLocationOptions([]);
+      setLocationLoading(false);
       setLocationError('');
       setDetailsOpen(false);
     }
@@ -110,6 +113,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
   useEffect(() => {
     if (!open) return undefined;
 
+    const requestId = ++locationRequestIdRef.current;
     const query = locationQuery.trim();
     if (query.length < 3) {
       setLocationOptions([]);
@@ -126,6 +130,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
 
     let ignore = false;
     const timeoutId = window.setTimeout(async () => {
+      if (ignore || requestId !== locationRequestIdRef.current) return;
       setLocationLoading(true);
       setLocationError('');
 
@@ -135,14 +140,14 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
           session: searchSessionRef.current,
           allowTextSearch: true,
         });
-        if (!ignore) setLocationOptions(results);
+        if (!ignore && requestId === locationRequestIdRef.current) setLocationOptions(results);
       } catch (error) {
-        if (!ignore) {
+        if (!ignore && requestId === locationRequestIdRef.current) {
           setLocationOptions([]);
           setLocationError(error.message);
         }
       } finally {
-        if (!ignore) setLocationLoading(false);
+        if (!ignore && requestId === locationRequestIdRef.current) setLocationLoading(false);
       }
     }, 450);
 
@@ -163,10 +168,12 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
   async function applyLocation(result) {
     if (!result || typeof result === 'string') return;
 
+    const requestId = ++locationRequestIdRef.current;
     setLocationLoading(true);
     setLocationError('');
     try {
       const resolved = await resolveLocationSuggestion(result, searchSessionRef.current);
+      if (requestId !== locationRequestIdRef.current) return;
       const nextLocationQuery = resolved.address || resolved.name;
       fixedLocationQueryRef.current = nextLocationQuery.trim();
       setLocationOptions([]);
@@ -183,9 +190,9 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
         providerType: resolved.providerType || resolved.type || '',
       }));
     } catch (error) {
-      setLocationError(error.message);
+      if (requestId === locationRequestIdRef.current) setLocationError(error.message);
     } finally {
-      setLocationLoading(false);
+      if (requestId === locationRequestIdRef.current) setLocationLoading(false);
     }
   }
 
@@ -271,7 +278,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
                   setLocationQuery(value);
                 }}
                 onChange={(_, value) => void applyLocation(value)}
-                loading={locationLoading}
+                loading={locationLoading && !hasSelectedLocation()}
                 noOptionsText={locationQuery.trim().length < 3 ? 'Escribe al menos 3 caracteres' : 'Sin resultados'}
                 renderInput={(params) => (
                   <TextField
@@ -284,7 +291,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
                 )}
               />
 
-              {locationLoading && (
+              {locationLoading && !hasSelectedLocation() && (
                 <Stack direction="row" spacing={1} alignItems="center">
                   <CircularProgress size={18} />
                   <Typography variant="body2" color="text.secondary">
