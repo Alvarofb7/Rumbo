@@ -25,7 +25,7 @@ function cleanTitle(value) {
     .trim();
 }
 
-function inferSource(url) {
+export function inferSourceType(url) {
   const lower = url.toLowerCase();
   return sourceMatchers.find((matcher) => matcher.patterns.some((pattern) => lower.includes(pattern)))?.sourceType || 'manual';
 }
@@ -70,17 +70,16 @@ function inferTitle(parsedUrl, sourceType) {
   return cleanTitle(pathParts.at(-1)) || 'Lugar importado';
 }
 
-function inferTags(sourceType, title) {
+function inferTags(title) {
   const lower = title.toLowerCase();
   const tags = [];
 
-  if (lower.includes('coffee') || lower.includes('café') || lower.includes('cafe')) tags.push('Café');
-  if (lower.includes('bar') || lower.includes('bodega')) tags.push('Bar');
-  if (lower.includes('restaurant') || lower.includes('restaurante')) tags.push('Restaurante');
-  if (sourceType === 'instagram') tags.push('Pendiente');
-  if (sourceType === 'tripadvisor') tags.push('Ranking');
+  if (lower.includes('terraza')) tags.push('Terraza');
+  if (lower.includes('tapas')) tags.push('Tapas');
+  if (lower.includes('brunch')) tags.push('Brunch');
+  if (lower.includes('vino')) tags.push('Vino');
 
-  return tags.length ? tags : ['Pendiente'];
+  return tags;
 }
 
 export function parsePlaceLink(rawUrl, fallbackPosition = null) {
@@ -96,9 +95,10 @@ export function parsePlaceLink(rawUrl, fallbackPosition = null) {
     throw new Error('No parece un enlace válido.');
   }
 
-  const sourceType = inferSource(normalizedUrl);
+  const sourceType = inferSourceType(normalizedUrl);
   const title = inferTitle(parsedUrl, sourceType);
   const coordinates = extractCoordinatesFromText(normalizedUrl) || fallbackPosition;
+  const category = inferPlaceCategory({ name: title });
 
   return {
     title,
@@ -106,11 +106,11 @@ export function parsePlaceLink(rawUrl, fallbackPosition = null) {
     zone: '',
     lat: coordinates?.lat ?? '',
     lng: coordinates?.lng ?? '',
-    tags: inferTags(sourceType, title),
+    category,
+    tags: normalizePlaceTags(inferTags(title), category),
     rating: 0,
     sourceType,
     sourceUrl: normalizedUrl,
-    imageUrl: sourceType === 'tripadvisor' ? '/media/tapas-recommendation.jpg' : '/media/cafe-recommendation.jpg',
-    notes: sourceType === 'instagram' ? 'Recomendación guardada desde un vídeo.' : 'Importado desde enlace.',
   };
 }
+import { inferPlaceCategory, normalizePlaceTags } from './placeData';

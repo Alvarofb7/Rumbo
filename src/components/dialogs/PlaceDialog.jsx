@@ -5,11 +5,13 @@ import {
   Box,
   Button,
   CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   IconButton,
+  MenuItem,
   Paper,
   Rating,
   Stack,
@@ -17,12 +19,14 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material';
-import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 import CloseIcon from '@mui/icons-material/Close';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import LinkIcon from '@mui/icons-material/Link';
 import PlaceIcon from '@mui/icons-material/Place';
 import { useTheme } from '@mui/material/styles';
-import { sourceMeta, statusOptions, tagOptions } from '../../data/demoData';
+import { statusOptions, tagOptions } from '../../data/demoData';
+import { inferSourceType } from '../../lib/linkParser';
+import { categoryOptions, inferPlaceCategory, normalizePlaceTags } from '../../lib/placeData';
 import {
   createPlaceSearchSession,
   resetPlaceSearchSession,
@@ -36,15 +40,15 @@ const blankPlace = {
   zone: '',
   lat: '',
   lng: '',
+  category: 'other',
   tags: [],
   rating: 0,
   status: 'wishlist',
-  notes: '',
   sourceType: 'manual',
   sourceUrl: '',
   resolvedUrl: '',
-  imageUrl: '',
   providerPlaceId: '',
+  providerType: '',
 };
 
 const formCardSx = {
@@ -75,49 +79,6 @@ function hasUsableCoordinates(lat, lng) {
   return lat !== '' && lng !== '' && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
 }
 
-function compressImageFile(file) {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      reject(new Error('Elige un archivo de imagen.'));
-      return;
-    }
-
-    const image = new Image();
-    const objectUrl = URL.createObjectURL(file);
-    image.onload = () => {
-      const maxSide = 1200;
-      const ratio = Math.min(1, maxSide / Math.max(image.width, image.height));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(image.width * ratio);
-      canvas.height = Math.round(image.height * ratio);
-      const context = canvas.getContext('2d');
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(objectUrl);
-
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            reject(new Error('No he podido preparar la foto.'));
-            return;
-          }
-
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = () => reject(new Error('No he podido leer la foto.'));
-          reader.readAsDataURL(blob);
-        },
-        'image/jpeg',
-        0.78,
-      );
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('No he podido abrir la imagen.'));
-    };
-    image.src = objectUrl;
-  });
-}
-
 export default function PlaceDialog({ open, place, onClose, onSave, searchBias }) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
@@ -126,8 +87,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
   const [locationOptions, setLocationOptions] = useState([]);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState('');
-  const [photoLoading, setPhotoLoading] = useState(false);
-  const [photoError, setPhotoError] = useState('');
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const fixedLocationQueryRef = useRef('');
   const searchSessionRef = useRef(createPlaceSearchSession());
 
@@ -143,8 +103,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       setLocationQuery(initialLocationQuery);
       setLocationOptions([]);
       setLocationError('');
-      setPhotoError('');
-      setPhotoLoading(false);
+      setDetailsOpen(false);
     }
   }, [open, place]);
 
@@ -173,7 +132,6 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       try {
         const results = await searchLocation(query, {
           ...searchBias,
-          mode: 'place',
           session: searchSessionRef.current,
           allowTextSearch: true,
         });
@@ -220,7 +178,9 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
         zone: resolved.zone || current.zone || '',
         lat: resolved.lat,
         lng: resolved.lng,
+        category: resolved.category || inferPlaceCategory(resolved),
         providerPlaceId: resolved.providerPlaceId || resolved.id || '',
+        providerType: resolved.providerType || resolved.type || '',
       }));
     } catch (error) {
       setLocationError(error.message);
@@ -229,34 +189,20 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
     }
   }
 
-  async function handlePhotoFile(event) {
-    const [file] = event.target.files || [];
-    event.target.value = '';
-    if (!file) return;
-
-    setPhotoError('');
-    setPhotoLoading(true);
-    try {
-      const imageUrl = await compressImageFile(file);
-      update('imageUrl', imageUrl);
-    } catch (error) {
-      setPhotoError(error.message);
-    } finally {
-      setPhotoLoading(false);
-    }
-  }
-
   function handleSave() {
     if (!draft.name.trim()) return;
+    const category = inferPlaceCategory(draft);
+    const sourceUrl = draft.sourceUrl.trim();
     onSave({
       ...draft,
       name: draft.name.trim(),
       address: draft.address.trim(),
       zone: draft.zone.trim(),
-      sourceUrl: draft.sourceUrl.trim(),
+      category,
+      tags: normalizePlaceTags(draft.tags, category),
+      sourceType: sourceUrl ? inferSourceType(sourceUrl) : draft.sourceType || 'manual',
+      sourceUrl,
       resolvedUrl: draft.resolvedUrl || '',
-      notes: draft.notes?.trim?.() || '',
-      imageUrl: draft.imageUrl?.trim?.() || '',
     });
   }
 
@@ -267,7 +213,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
           <Box sx={{ flex: 1 }}>
             <Typography variant="h3">{draft.id ? 'Editar lugar' : 'Guardar lugar'}</Typography>
             <Typography variant="body2" color="text.secondary">
-              Primero fija el sitio; después añade tu ranking y foto.
+              Busca el sitio y guarda sólo lo que te importe.
             </Typography>
           </Box>
           <IconButton aria-label="Cerrar formulario" onClick={onClose}>
@@ -357,8 +303,20 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
 
           <Paper variant="outlined" sx={formCardSx}>
             <Stack spacing={1.4}>
-              <TextField label="Nombre" value={draft.name} onChange={(event) => update('name', event.target.value)} required fullWidth sx={compactFieldSx} />
-              <TextField label="Zona o barrio" value={draft.zone} onChange={(event) => update('zone', event.target.value)} fullWidth sx={compactFieldSx} />
+              <TextField
+                select
+                label="Categoría"
+                value={draft.category || 'other'}
+                onChange={(event) => update('category', event.target.value)}
+                fullWidth
+                sx={compactFieldSx}
+              >
+                {categoryOptions.map((category) => (
+                  <MenuItem key={category.value} value={category.value}>
+                    {category.label}
+                  </MenuItem>
+                ))}
+              </TextField>
 
               <Box>
                 <Typography fontWeight={850} sx={{ mb: 0.8 }}>
@@ -415,91 +373,44 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
                 value={draft.tags || []}
                 onChange={(_, value) => update('tags', value)}
                 sx={{ minWidth: 0 }}
-                renderInput={(params) => <TextField {...params} label="Etiquetas" placeholder="Bar, terraza, cita..." sx={compactFieldSx} />}
+                renderInput={(params) => <TextField {...params} label="Etiquetas personales" placeholder="Terraza, cita, trabajo..." sx={compactFieldSx} />}
               />
             </Stack>
           </Paper>
 
-          <Paper variant="outlined" sx={formCardSx}>
-            <Stack spacing={1.2}>
-              <Typography fontWeight={850}>Foto</Typography>
-              {draft.imageUrl ? (
-                <Box sx={{ position: 'relative' }}>
-                  <Box
-                    component="img"
-                    src={draft.imageUrl}
-                    alt=""
-                    sx={{ width: '100%', height: 172, objectFit: 'cover', borderRadius: 3, bgcolor: 'primary.light' }}
-                  />
-                  <IconButton
-                    aria-label="Quitar foto"
-                    onClick={() => update('imageUrl', '')}
-                    sx={{ position: 'absolute', top: 8, right: 8, bgcolor: 'rgba(255,255,255,0.9)' }}
-                  >
-                    <CloseIcon />
-                  </IconButton>
-                </Box>
-              ) : (
-                <Button component="label" variant="outlined" startIcon={<AddPhotoAlternateIcon />} disabled={photoLoading}>
-                  {photoLoading ? 'Preparando foto...' : 'Añadir foto'}
-                  <input hidden accept="image/*" type="file" onChange={handlePhotoFile} />
-                </Button>
-              )}
-              {photoError && <Alert severity="warning">{photoError}</Alert>}
-              <TextField
-                label="O pega una URL de imagen"
-                value={draft.imageUrl?.startsWith('data:') ? '' : draft.imageUrl || ''}
-                onChange={(event) => update('imageUrl', event.target.value)}
-                placeholder="https://..."
-                fullWidth
-                sx={compactFieldSx}
-              />
-            </Stack>
-          </Paper>
+          <Button
+            variant="text"
+            onClick={() => setDetailsOpen((current) => !current)}
+            endIcon={<ExpandMoreIcon sx={{ transform: detailsOpen ? 'rotate(180deg)' : 'none', transition: 'transform 160ms ease' }} />}
+            sx={{ alignSelf: 'flex-start' }}
+          >
+            Más detalles
+          </Button>
 
-          <Paper variant="outlined" sx={formCardSx}>
-            <Stack spacing={1.2}>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <LinkIcon color="primary" />
-                <Box>
-                  <Typography fontWeight={850}>Referencia</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Opcional: enlace original de Maps, Tripadvisor o Instagram.
-                  </Typography>
-                </Box>
+          <Collapse in={detailsOpen} unmountOnExit>
+            <Paper variant="outlined" sx={formCardSx}>
+              <Stack spacing={1.4}>
+                <TextField label="Nombre" value={draft.name} onChange={(event) => update('name', event.target.value)} required fullWidth sx={compactFieldSx} />
+                <TextField label="Zona o barrio" value={draft.zone} onChange={(event) => update('zone', event.target.value)} fullWidth sx={compactFieldSx} />
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <LinkIcon color="primary" />
+                  <Typography fontWeight={850}>Enlace original</Typography>
+                </Stack>
+                <TextField
+                  label="Maps, Tripadvisor o Instagram"
+                  value={draft.sourceUrl}
+                  onChange={(event) => update('sourceUrl', event.target.value)}
+                  fullWidth
+                  sx={compactFieldSx}
+                />
               </Stack>
-
-              <TextField label="Enlace original" value={draft.sourceUrl} onChange={(event) => update('sourceUrl', event.target.value)} fullWidth sx={compactFieldSx} />
-
-              <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap" sx={{ '& .MuiButton-root': { minWidth: 0 } }}>
-                {Object.entries(sourceMeta).map(([value, meta]) => {
-                  const selected = draft.sourceType === value;
-                  return (
-                    <Button
-                      key={value}
-                      size="small"
-                      variant={selected ? 'contained' : 'outlined'}
-                      onClick={() => update('sourceType', value)}
-                      sx={{
-                        minHeight: 34,
-                        bgcolor: selected ? meta.color : 'transparent',
-                        borderColor: `${meta.color}55`,
-                        color: selected ? '#fff' : meta.color,
-                        '&:hover': { bgcolor: selected ? meta.color : `${meta.color}10` },
-                      }}
-                    >
-                      {meta.label}
-                    </Button>
-                  );
-                })}
-              </Stack>
-            </Stack>
-          </Paper>
+            </Paper>
+          </Collapse>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: { xs: 2.25, sm: 3 }, py: 2, pb: `calc(16px + env(safe-area-inset-bottom))` }}>
         <Button onClick={onClose}>Cancelar</Button>
-        <Button variant="contained" onClick={handleSave} disabled={!draft.name.trim() || photoLoading}>
+        <Button variant="contained" onClick={handleSave} disabled={!draft.name.trim() || !hasSelectedLocation()}>
           Guardar lugar
         </Button>
       </DialogActions>

@@ -1,10 +1,4 @@
-const defaultImages = {
-  google: '/media/cafe-recommendation.jpg',
-  apple: '/media/cafe-recommendation.jpg',
-  instagram: '/media/cafe-recommendation.jpg',
-  tripadvisor: '/media/tapas-recommendation.jpg',
-  manual: '/media/cafe-recommendation.jpg',
-};
+import { inferPlaceCategory, normalizePlaceTags } from '../src/lib/placeData.js';
 
 const sourceMatchers = [
   { sourceType: 'instagram', patterns: ['instagram.com'] },
@@ -96,16 +90,16 @@ function getAddressZone(address = {}) {
   );
 }
 
-function inferTags(sourceType, name = '') {
+function inferTags(name = '') {
   const lower = name.toLowerCase();
   const tags = [];
 
-  if (lower.includes('coffee') || lower.includes('café') || lower.includes('cafe')) tags.push('Café');
-  if (lower.includes('bar') || lower.includes('bodega')) tags.push('Bar');
-  if (lower.includes('restaurant') || lower.includes('restaurante') || sourceType === 'tripadvisor') tags.push('Restaurante');
-  if (sourceType === 'instagram') tags.push('Pendiente');
+  if (lower.includes('terraza')) tags.push('Terraza');
+  if (lower.includes('tapas')) tags.push('Tapas');
+  if (lower.includes('brunch')) tags.push('Brunch');
+  if (lower.includes('vino')) tags.push('Vino');
 
-  return tags.length ? tags : ['Pendiente'];
+  return tags;
 }
 
 function parseGoogleUrl(url) {
@@ -639,6 +633,7 @@ export async function buildImportedPlace(rawUrl) {
   const zone = enriched?.zone || parsed.zone || '';
   const lat = enriched?.lat ?? parsed.coordinates?.lat ?? '';
   const lng = enriched?.lng ?? parsed.coordinates?.lng ?? '';
+  const category = inferPlaceCategory({ name, type: enriched?.category || '' });
 
   return {
     title: name,
@@ -646,15 +641,12 @@ export async function buildImportedPlace(rawUrl) {
     zone,
     lat,
     lng,
-    tags: inferTags(sourceType, `${name} ${resolvedUrl}`),
+    category,
+    tags: normalizePlaceTags(inferTags(`${name} ${resolvedUrl}`), category),
     rating: 0,
     sourceType,
     sourceUrl: normalizedUrl,
     resolvedUrl,
-    imageUrl: defaultImages[sourceType] || defaultImages.manual,
-    notes: enriched
-      ? `Importado desde ${sourceType === 'tripadvisor' ? 'Tripadvisor' : sourceType === 'google' ? 'Google Maps' : 'enlace'} con ubicación detectada.`
-      : 'Importado desde enlace. Revisa la ubicación antes de guardar.',
   };
 }
 

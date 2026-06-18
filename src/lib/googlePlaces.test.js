@@ -39,7 +39,7 @@ describe('Google Places search', () => {
     googleMapsMocks.hasGoogleMapsConfig.mockReturnValue(true);
   });
 
-  it('restricts place creation to the visible map bounds', async () => {
+  it('biases place creation without blocking results outside the visible map', async () => {
     const fetchAutocompleteSuggestions = vi.fn().mockResolvedValue({
       suggestions: [{ placePrediction: prediction() }],
     });
@@ -49,7 +49,6 @@ describe('Google Places search', () => {
     });
 
     const results = await searchLocation('Seis Tapas Sevilla', {
-      mode: 'place',
       bounds: sevillaBounds,
       center: { lat: 37.3891, lng: -5.9845 },
       session: createPlaceSearchSession(),
@@ -58,11 +57,11 @@ describe('Google Places search', () => {
     expect(fetchAutocompleteSuggestions).toHaveBeenCalledWith(
       expect.objectContaining({
         input: 'Seis Tapas Sevilla',
-        locationRestriction: sevillaBounds,
+        locationBias: sevillaBounds,
         origin: { lat: 37.3891, lng: -5.9845 },
       }),
     );
-    expect(fetchAutocompleteSuggestions.mock.calls[0][0]).not.toHaveProperty('locationBias');
+    expect(fetchAutocompleteSuggestions.mock.calls[0][0]).not.toHaveProperty('locationRestriction');
     expect(results[0]).toMatchObject({ name: 'Seis', address: 'Plaza Nueva, Sevilla', source: 'google-places' });
   });
 
@@ -76,7 +75,6 @@ describe('Google Places search', () => {
     });
 
     await searchLocation('París', {
-      mode: 'destination',
       bounds: sevillaBounds,
       center: { lat: 37.3891, lng: -5.9845 },
       session: createPlaceSearchSession(),

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { distanceInMeters, normalizePosition } from '../lib/geo';
+import { getCategoryLabel } from '../lib/placeData';
 
 export function usePlaceFilters(places, filters, userPosition) {
   return useMemo(() => {
@@ -8,7 +9,7 @@ export function usePlaceFilters(places, filters, userPosition) {
     const tags = filters.tags;
 
     const filtered = places.filter((place) => {
-      const haystack = [place.name, place.address, place.zone, place.notes, ...(place.tags || [])].join(' ').toLowerCase();
+      const haystack = [place.name, place.address, place.zone, getCategoryLabel(place.category), ...(place.tags || [])].join(' ').toLowerCase();
       const matchesSearch = !search || haystack.includes(search);
       const matchesZone = !zone || (place.zone || '').toLowerCase().includes(zone);
       const matchesStatus = filters.status === 'all' || place.status === filters.status;

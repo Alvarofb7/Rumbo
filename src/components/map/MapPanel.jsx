@@ -128,7 +128,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
         content: createMarkerContent({ color: getPlaceColor(place), selected, label: place.name }),
         zIndex: selected ? 30 : 10,
       });
-      marker.addListener('click', () => onSelectPlace(place));
+      marker.addEventListener('gmp-click', () => onSelectPlace(place));
       markersRef.current.push(marker);
     });
 

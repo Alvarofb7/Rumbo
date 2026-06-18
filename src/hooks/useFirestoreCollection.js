@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   addDoc,
   collection,
+  deleteField,
   deleteDoc,
   doc,
   onSnapshot,
@@ -23,9 +24,13 @@ function serializeDoc(document) {
   };
 }
 
-export function useUserCollection(user, collectionName, initialItems = []) {
+const identity = (item) => item;
+
+export function useUserCollection(user, collectionName, initialItems = [], options = {}) {
+  const normalizeItem = options.normalizeItem || identity;
+  const getMigration = options.getMigration;
   const safeUid = user?.uid?.replaceAll(':', '_') || 'anonymous';
-  const local = useLocalCollection(`rumbo.${safeUid}.${collectionName}`, initialItems);
+  const local = useLocalCollection(`rumbo.${safeUid}.${collectionName}`, initialItems, normalizeItem);
   const [remoteItems, setRemoteItems] = useState([]);
   const [remoteLoading, setRemoteLoading] = useState(Boolean(isFirebaseConfigured && user && !user.isLocal));
 
@@ -39,36 +44,50 @@ export function useUserCollection(user, collectionName, initialItems = []) {
     return onSnapshot(
       ordered,
       (snapshot) => {
-        setRemoteItems(snapshot.docs.map(serializeDoc));
+        setRemoteItems(snapshot.docs.map((document) => normalizeItem(serializeDoc(document))));
         setRemoteLoading(false);
+
+        if (getMigration) {
+          const migrations = snapshot.docs.flatMap((document) => {
+            const migration = getMigration(document.data());
+            const patch = { ...migration.set };
+            migration.remove.forEach((field) => {
+              patch[field] = deleteField();
+            });
+            if (!Object.keys(patch).length) return [];
+            return updateDoc(document.ref, { ...patch, updatedAt: serverTimestamp() });
+          });
+          if (migrations.length) void Promise.allSettled(migrations);
+        }
       },
       () => setRemoteLoading(false),
     );
-  }, [collectionName, user]);
+  }, [collectionName, getMigration, normalizeItem, user]);
 
   const addItem = useCallback(
     async (item) => {
       if (!isFirebaseConfigured || !db || !user || user.isLocal) return local.addItem(item);
       const ref = collection(db, 'users', user.uid, collectionName);
       const payload = {
-        ...item,
+        ...normalizeItem(item),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
       const created = await addDoc(ref, payload);
       return { id: created.id, ...item };
     },
-    [collectionName, local, user],
+    [collectionName, local, normalizeItem, user],
   );
 
   const updateItem = useCallback(
     async (id, patch) => {
       if (!isFirebaseConfigured || !db || !user || user.isLocal) return local.updateItem(id, patch);
       const ref = doc(db, 'users', user.uid, collectionName, id);
-      await updateDoc(ref, { ...patch, updatedAt: serverTimestamp() });
-      return { id, ...patch };
+      const payload = normalizeItem(patch);
+      await updateDoc(ref, { ...payload, updatedAt: serverTimestamp() });
+      return { id, ...payload };
     },
-    [collectionName, local, user],
+    [collectionName, local, normalizeItem, user],
   );
 
   const deleteItem = useCallback(

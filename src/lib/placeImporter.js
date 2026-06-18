@@ -1,4 +1,5 @@
 import { parsePlaceLink } from './linkParser';
+import { sanitizePlaceRecord } from './placeData';
 
 export async function importPlaceFromUrl(url) {
   try {
@@ -11,8 +12,8 @@ export async function importPlaceFromUrl(url) {
     });
 
     const contentType = response.headers.get('content-type') || '';
-    if (response.ok && contentType.includes('application/json')) return response.json();
-    if (response.ok) return parsePlaceLink(url);
+    if (response.ok && contentType.includes('application/json')) return sanitizePlaceRecord(await response.json());
+    if (response.ok) return sanitizePlaceRecord(parsePlaceLink(url));
 
     if (response.status !== 404) {
       const error = await response.json().catch(() => null);
@@ -22,5 +23,5 @@ export async function importPlaceFromUrl(url) {
     if (!String(error.message || '').includes('Failed to fetch')) throw error;
   }
 
-  return parsePlaceLink(url);
+  return sanitizePlaceRecord(parsePlaceLink(url));
 }
