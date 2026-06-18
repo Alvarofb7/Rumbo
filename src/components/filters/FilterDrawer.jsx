@@ -30,7 +30,7 @@ export default function FilterDrawer({ open, filters, setFilters, onClose, place
   }
 
   return (
-    <Drawer anchor="bottom" open={open} onClose={onClose} PaperProps={{ sx: { borderRadius: '18px 18px 0 0', maxHeight: '88dvh' } }}>
+    <Drawer anchor="bottom" open={open} onClose={onClose} PaperProps={{ sx: { borderRadius: '16px 16px 0 0', maxHeight: '88dvh' } }}>
       <Box sx={{ width: '100%', maxWidth: 720, mx: 'auto', p: 2, pb: `calc(18px + env(safe-area-inset-bottom))` }}>
         <Stack spacing={2}>
           <Stack direction="row" spacing={1.5} alignItems="center">

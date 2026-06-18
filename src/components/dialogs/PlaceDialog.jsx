@@ -53,7 +53,7 @@ const blankPlace = {
 
 const formCardSx = {
   p: { xs: 1.25, sm: 1.5 },
-  borderRadius: '26px',
+  borderRadius: '18px',
   borderColor: 'rgba(8,75,67,0.10)',
   bgcolor: 'rgba(255,255,255,0.76)',
   overflow: 'hidden',
@@ -65,7 +65,7 @@ const compactFieldSx = {
   '& .MuiInputBase-root': {
     minWidth: 0,
     bgcolor: '#fff',
-    borderRadius: '18px',
+    borderRadius: '12px',
   },
   '& .MuiOutlinedInput-notchedOutline': {
     borderColor: 'rgba(8,75,67,0.18)',

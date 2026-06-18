@@ -107,7 +107,7 @@ function DataDrawer({ open, title, subtitle, isDesktop, onClose, children, fitCo
           maxWidth: '100vw',
           height: { xs: fitContent ? 'auto' : '82dvh', md: '100dvh' },
           maxHeight: { xs: '82dvh', md: '100dvh' },
-          borderRadius: { xs: '30px 30px 0 0', md: '28px 0 0 28px' },
+          borderRadius: { xs: '20px 20px 0 0', md: '18px 0 0 18px' },
           overflow: 'hidden',
           display: 'grid',
           gridTemplateRows: { xs: fitContent ? 'auto minmax(0, auto)' : 'auto minmax(0, 1fr)', md: 'auto minmax(0, 1fr)' },
@@ -178,7 +178,7 @@ export default function MainApp() {
   const places = placesStore.items;
   const inbox = inboxStore.items;
   const listedFilters = useMemo(() => ({ ...initialFilters, sort: listSort }), [listSort]);
-  const filteredMapPlaces = usePlaceFilters(places, mapFilters, position);
+  const filteredMapPlaces = usePlaceFilters(places, mapFilters, null);
   const listedPlaces = usePlaceFilters(places, listedFilters, position);
   const selectedPlace = places.find((place) => place.id === selectedPlaceId) || null;
   const visibleMapPlaces = useMemo(() => {
@@ -553,7 +553,7 @@ export default function MainApp() {
           places={visibleMapPlaces}
           selectedPlace={selectedPlace}
           userPosition={position}
-          center={mapCenter || position}
+          center={mapCenter}
           onSelectPlace={selectPlace}
           onViewportChange={setMapViewport}
         />
@@ -579,7 +579,7 @@ export default function MainApp() {
                 gap: 0.6,
                 height: 58,
                 px: 0.65,
-                borderRadius: 999,
+                borderRadius: '18px',
                 bgcolor: 'rgba(255,255,255,0.92)',
                 border: '1px solid rgba(8,75,67,0.10)',
                 boxShadow: '0 18px 48px rgba(6,42,48,0.16)',
@@ -599,7 +599,7 @@ export default function MainApp() {
                   minWidth: 0,
                   height: 46,
                   px: 1,
-                  borderRadius: 999,
+                  borderRadius: '14px',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 0.9,
@@ -654,7 +654,7 @@ export default function MainApp() {
                   mt: 1,
                   maxHeight: { xs: 310, sm: 360 },
                   overflow: 'auto',
-                  borderRadius: '24px',
+                  borderRadius: '16px',
                   bgcolor: 'rgba(255,255,255,0.97)',
                   border: '1px solid rgba(8,75,67,0.10)',
                   boxShadow: '0 24px 60px rgba(6,42,48,0.18)',
@@ -766,7 +766,7 @@ export default function MainApp() {
             width: { md: 360 },
             px: 1.4,
             py: 1,
-            borderRadius: 999,
+            borderRadius: '14px',
             bgcolor: 'rgba(255,255,255,0.92)',
             border: '1px solid rgba(8,75,67,0.10)',
             boxShadow: '0 14px 36px rgba(6,42,48,0.14)',
@@ -790,7 +790,7 @@ export default function MainApp() {
             bottom: selectedPlace ? 'calc(154px + env(safe-area-inset-bottom))' : 'calc(88px + env(safe-area-inset-bottom))',
             zIndex: 980,
             width: { md: 390 },
-            borderRadius: 3,
+            borderRadius: '14px',
             boxShadow: '0 18px 44px rgba(6,42,48,0.18)',
           }}
         >
@@ -878,7 +878,7 @@ export default function MainApp() {
         anchor="left"
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
-        PaperProps={{ sx: { borderRadius: '0 28px 28px 0' } }}
+        PaperProps={{ sx: { borderRadius: '0 18px 18px 0' } }}
       >
         <AppMenuDrawer
           stats={stats}

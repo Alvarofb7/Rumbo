@@ -23,7 +23,7 @@ export default function SelectedPlaceCard({ place, onClose, onDirections, onEdit
         width: { xs: 'auto', md: 388 },
         zIndex: 940,
         p: 1,
-        borderRadius: 4,
+        borderRadius: '18px',
         bgcolor: 'rgba(255,255,255,0.96)',
         border: '1px solid rgba(8,75,67,0.12)',
         boxShadow: '0 22px 56px rgba(6,42,48,0.20)',
