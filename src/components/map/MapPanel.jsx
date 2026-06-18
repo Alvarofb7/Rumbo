@@ -1,25 +1,8 @@
-import { useEffect } from 'react';
-import { CircleMarker, MapContainer, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet';
-import { Box } from '@mui/material';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Box, CircularProgress } from '@mui/material';
 import { defaultCenter } from '../../data/demoData';
-import { formatDistance } from '../../lib/geo';
-import { getPlaceColor, getStatusMeta } from '../common/placeUtils';
-
-const localNameTileLayer = {
-  url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  attribution: '&copy; OpenStreetMap &copy; CARTO',
-};
-
-function Recenter({ center }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!Number.isFinite(Number(center?.lat)) || !Number.isFinite(Number(center?.lng))) return;
-    map.flyTo([center.lat, center.lng], map.getZoom() < 13 ? 14 : map.getZoom(), { duration: 0.25 });
-  }, [center, map]);
-
-  return null;
-}
+import { importGoogleLibrary } from '../../lib/googleMaps';
+import { getPlaceColor } from '../common/placeUtils';
 
 function hasValidCoordinate(value) {
   return value !== '' && value !== null && value !== undefined && Number.isFinite(Number(value));
@@ -29,78 +12,147 @@ function hasValidCoordinates(place) {
   return hasValidCoordinate(place?.lat) && hasValidCoordinate(place?.lng);
 }
 
-export default function MapPanel({ places, selectedPlace, userPosition, center, onDirections, onSelectPlace }) {
-  const safeCenter = center || userPosition || defaultCenter;
-  const visiblePlaces = places.filter(hasValidCoordinates);
+function createMarkerContent({ color, selected = false, current = false, label = '' }) {
+  const marker = document.createElement('button');
+  marker.type = 'button';
+  marker.className = current ? 'rumbo-google-marker rumbo-google-marker--current' : 'rumbo-google-marker';
+  marker.style.setProperty('--marker-color', color);
+  marker.style.setProperty('--marker-size', `${selected ? 28 : current ? 22 : 22}px`);
+  marker.title = label;
+  marker.setAttribute('aria-label', label);
+  return marker;
+}
+
+function getViewport(map) {
+  const center = map.getCenter();
+  const bounds = map.getBounds();
+  const northEast = bounds?.getNorthEast();
+  const southWest = bounds?.getSouthWest();
+
+  return {
+    center: center ? { lat: center.lat(), lng: center.lng() } : null,
+    bounds:
+      northEast && southWest
+        ? {
+            north: northEast.lat(),
+            east: northEast.lng(),
+            south: southWest.lat(),
+            west: southWest.lng(),
+          }
+        : null,
+  };
+}
+
+export default function MapPanel({ places, selectedPlace, userPosition, center, onSelectPlace, onViewportChange }) {
+  const containerRef = useRef(null);
+  const mapRef = useRef(null);
+  const markerClassRef = useRef(null);
+  const markersRef = useRef([]);
+  const latestCenterRef = useRef(center || userPosition || defaultCenter);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState('');
+
+  useEffect(() => {
+    latestCenterRef.current = center || userPosition || defaultCenter;
+  }, [center, userPosition]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let idleListener;
+
+    async function initializeMap() {
+      try {
+        const [{ Map }, { AdvancedMarkerElement }] = await Promise.all([
+          importGoogleLibrary('maps'),
+          importGoogleLibrary('marker'),
+        ]);
+        if (cancelled || !containerRef.current) return;
+
+        markerClassRef.current = AdvancedMarkerElement;
+        mapRef.current = new Map(containerRef.current, {
+          center: latestCenterRef.current,
+          zoom: 14,
+          mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID?.trim() || 'DEMO_MAP_ID',
+          disableDefaultUI: true,
+          clickableIcons: false,
+          gestureHandling: 'greedy',
+          backgroundColor: '#eef1ea',
+        });
+        idleListener = mapRef.current.addListener('idle', () => onViewportChange?.(getViewport(mapRef.current)));
+        setMapReady(true);
+      } catch (error) {
+        if (!cancelled) setMapError(error.message);
+      }
+    }
+
+    initializeMap();
+    return () => {
+      cancelled = true;
+      idleListener?.remove();
+      mapRef.current = null;
+    };
+  }, [onViewportChange]);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || !hasValidCoordinates(latestCenterRef.current)) return;
+    mapRef.current.panTo({ lat: Number(latestCenterRef.current.lat), lng: Number(latestCenterRef.current.lng) });
+    if ((mapRef.current.getZoom() || 0) < 13) mapRef.current.setZoom(14);
+  }, [center, mapReady, userPosition]);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || !markerClassRef.current) return undefined;
+
+    markersRef.current.forEach((marker) => {
+      marker.map = null;
+    });
+    markersRef.current = [];
+
+    if (hasValidCoordinates(userPosition)) {
+      markersRef.current.push(
+        new markerClassRef.current({
+          map: mapRef.current,
+          position: { lat: Number(userPosition.lat), lng: Number(userPosition.lng) },
+          title: 'Tu ubicación',
+          content: createMarkerContent({ color: '#1976ff', current: true, label: 'Tu ubicación' }),
+          zIndex: 20,
+        }),
+      );
+    }
+
+    places.filter(hasValidCoordinates).forEach((place) => {
+      const selected = selectedPlace?.id === place.id;
+      const marker = new markerClassRef.current({
+        map: mapRef.current,
+        position: { lat: Number(place.lat), lng: Number(place.lng) },
+        title: place.name,
+        content: createMarkerContent({ color: getPlaceColor(place), selected, label: place.name }),
+        zIndex: selected ? 30 : 10,
+      });
+      marker.addListener('click', () => onSelectPlace(place));
+      markersRef.current.push(marker);
+    });
+
+    return () => {
+      markersRef.current.forEach((marker) => {
+        marker.map = null;
+      });
+      markersRef.current = [];
+    };
+  }, [mapReady, onSelectPlace, places, selectedPlace, userPosition]);
 
   return (
-    <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
-      <MapContainer center={[safeCenter.lat, safeCenter.lng]} zoom={14} zoomControl={false} attributionControl={false}>
-        <TileLayer
-          attribution={localNameTileLayer.attribution}
-          url={localNameTileLayer.url}
-          subdomains="abcd"
-          detectRetina
-          className="rumbo-map-tiles"
-        />
-        <Recenter center={safeCenter} />
-        {hasValidCoordinates(userPosition) && (
-          <CircleMarker
-            center={[userPosition.lat, userPosition.lng]}
-            radius={11}
-            pathOptions={{
-              color: '#ffffff',
-              weight: 4,
-              fillColor: '#1976ff',
-              fillOpacity: 1,
-            }}
-          >
-            <Tooltip direction="top">Tu ubicación</Tooltip>
-          </CircleMarker>
-        )}
-
-        {visiblePlaces.map((place) => {
-          const selected = selectedPlace?.id === place.id;
-          const color = getPlaceColor(place);
-          const statusMeta = getStatusMeta(place.status);
-
-          return (
-            <CircleMarker
-              key={place.id}
-              center={[Number(place.lat), Number(place.lng)]}
-              radius={selected ? 13 : 10}
-              pathOptions={{
-                color: '#ffffff',
-                weight: selected ? 5 : 3,
-                fillColor: color,
-                fillOpacity: selected ? 1 : 0.92,
-              }}
-              eventHandlers={{ click: () => onSelectPlace(place) }}
-            >
-              <Tooltip direction="top" offset={[0, -6]}>
-                {place.name}
-              </Tooltip>
-              <Popup minWidth={220}>
-                <Box className="rumbo-map-popup">
-                  <strong>{place.name}</strong>
-                  <span>{place.address || place.zone || 'Sin dirección'}</span>
-                  <div className="rumbo-map-popup-meta">
-                    <span>{statusMeta.label}</span>
-                    <span>{formatDistance(place.distance)}</span>
-                  </div>
-                  {place.notes && <p>{place.notes}</p>}
-                  <button type="button" onClick={() => onDirections?.(place)}>
-                    Cómo llegar
-                  </button>
-                </Box>
-              </Popup>
-            </CircleMarker>
-          );
-        })}
-      </MapContainer>
-      <Box className="rumbo-map-attribution">
-        © OSM · CARTO
-      </Box>
+    <Box sx={{ width: '100%', height: '100%', position: 'relative', bgcolor: '#eef1ea' }}>
+      <Box ref={containerRef} className="rumbo-google-map" />
+      {!mapReady && !mapError && (
+        <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
+          <CircularProgress size={28} />
+        </Box>
+      )}
+      {mapError && (
+        <Alert severity="warning" sx={{ position: 'absolute', left: 16, right: 16, top: '45%', zIndex: 2 }}>
+          {mapError}
+        </Alert>
+      )}
     </Box>
   );
 }

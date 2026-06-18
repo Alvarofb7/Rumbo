@@ -23,7 +23,12 @@ import LinkIcon from '@mui/icons-material/Link';
 import PlaceIcon from '@mui/icons-material/Place';
 import { useTheme } from '@mui/material/styles';
 import { sourceMeta, statusOptions, tagOptions } from '../../data/demoData';
-import { searchLocation } from '../../lib/geo';
+import {
+  createPlaceSearchSession,
+  resetPlaceSearchSession,
+  resolveLocationSuggestion,
+  searchLocation,
+} from '../../lib/googlePlaces';
 
 const blankPlace = {
   name: '',
@@ -39,6 +44,7 @@ const blankPlace = {
   sourceUrl: '',
   resolvedUrl: '',
   imageUrl: '',
+  providerPlaceId: '',
 };
 
 const formCardSx = {
@@ -123,9 +129,11 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
   const [photoLoading, setPhotoLoading] = useState(false);
   const [photoError, setPhotoError] = useState('');
   const fixedLocationQueryRef = useRef('');
+  const searchSessionRef = useRef(createPlaceSearchSession());
 
   useEffect(() => {
     if (open) {
+      resetPlaceSearchSession(searchSessionRef.current);
       const nextDraft = { ...blankPlace, ...place };
       const initialLocationQuery = nextDraft.address || nextDraft.name || '';
       const initialHasCoordinates = hasUsableCoordinates(nextDraft.lat, nextDraft.lng);
@@ -163,7 +171,12 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       setLocationError('');
 
       try {
-        const results = await searchLocation(query, searchBias);
+        const results = await searchLocation(query, {
+          ...searchBias,
+          mode: 'place',
+          session: searchSessionRef.current,
+          allowTextSearch: true,
+        });
         if (!ignore) setLocationOptions(results);
       } catch (error) {
         if (!ignore) {
@@ -189,23 +202,31 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
     return hasUsableCoordinates(draft.lat, draft.lng);
   }
 
-  function applyLocation(result) {
+  async function applyLocation(result) {
     if (!result || typeof result === 'string') return;
 
-    const nextLocationQuery = result.address || result.name;
-    fixedLocationQueryRef.current = nextLocationQuery.trim();
-    setLocationLoading(false);
+    setLocationLoading(true);
     setLocationError('');
-    setLocationOptions([]);
-    setLocationQuery(nextLocationQuery);
-    setDraft((current) => ({
-      ...current,
-      name: current.name?.trim() ? current.name : result.name,
-      address: result.address || current.address,
-      zone: current.zone || result.zone || '',
-      lat: result.lat,
-      lng: result.lng,
-    }));
+    try {
+      const resolved = await resolveLocationSuggestion(result, searchSessionRef.current);
+      const nextLocationQuery = resolved.address || resolved.name;
+      fixedLocationQueryRef.current = nextLocationQuery.trim();
+      setLocationOptions([]);
+      setLocationQuery(nextLocationQuery);
+      setDraft((current) => ({
+        ...current,
+        name: current.name?.trim() ? current.name : resolved.name,
+        address: resolved.address || current.address,
+        zone: resolved.zone || current.zone || '',
+        lat: resolved.lat,
+        lng: resolved.lng,
+        providerPlaceId: resolved.providerPlaceId || resolved.id || '',
+      }));
+    } catch (error) {
+      setLocationError(error.message);
+    } finally {
+      setLocationLoading(false);
+    }
   }
 
   async function handlePhotoFile(event) {
@@ -303,14 +324,14 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
                   if (reason === 'input' || reason === 'clear') fixedLocationQueryRef.current = '';
                   setLocationQuery(value);
                 }}
-                onChange={(_, value) => applyLocation(value)}
+                onChange={(_, value) => void applyLocation(value)}
                 loading={locationLoading}
                 noOptionsText={locationQuery.trim().length < 3 ? 'Escribe al menos 3 caracteres' : 'Sin resultados'}
                 renderInput={(params) => (
                   <TextField
                     {...params}
                     label="Buscar sitio"
-                    placeholder="Ojalá Tapas Sevilla"
+                    placeholder="Nombre del bar o dirección"
                     helperText={hasSelectedLocation() ? draft.address : 'Elige un resultado para fijarlo en el mapa.'}
                     sx={compactFieldSx}
                   />

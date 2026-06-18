@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -34,7 +34,12 @@ import { useAuth } from '../context/AuthContext';
 import { useUserCollection } from '../hooks/useFirestoreCollection';
 import { usePlaceFilters } from '../hooks/usePlaceFilters';
 import { useUserLocation } from '../hooks/useUserLocation';
-import { searchLocation } from '../lib/geo';
+import {
+  createPlaceSearchSession,
+  resetPlaceSearchSession,
+  resolveLocationSuggestion,
+  searchLocation,
+} from '../lib/googlePlaces';
 import { importPlaceFromUrl } from '../lib/placeImporter';
 import FilterDrawer from './filters/FilterDrawer';
 import InboxPanel from './panels/InboxPanel';
@@ -59,6 +64,7 @@ const emptyPlace = {
   sourceUrl: '',
   resolvedUrl: '',
   imageUrl: '',
+  providerPlaceId: '',
 };
 
 const initialFilters = {
@@ -144,6 +150,7 @@ export default function MainApp() {
   const inboxStore = useUserCollection(user, 'inbox', demoInbox);
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
   const [mapCenter, setMapCenter] = useState(null);
+  const [mapViewport, setMapViewport] = useState(null);
   const [mapFilters, setMapFilters] = useState(initialFilters);
   const [listSort, setListSort] = useState('nearest');
   const [placeDialogOpen, setPlaceDialogOpen] = useState(false);
@@ -159,6 +166,7 @@ export default function MainApp() {
   const [placesOpen, setPlacesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [toast, setToast] = useState('');
+  const mapSearchSessionRef = useRef(createPlaceSearchSession());
 
   const places = placesStore.items;
   const inbox = inboxStore.items;
@@ -172,6 +180,13 @@ export default function MainApp() {
     return [...filteredMapPlaces, selectedPlace];
   }, [filteredMapPlaces, selectedPlace]);
   const filtersActive = activeFilterCount(mapFilters);
+  const mapSearchBias = useMemo(
+    () => ({
+      center: mapViewport?.center || mapCenter || position,
+      bounds: mapViewport?.bounds || null,
+    }),
+    [mapCenter, mapViewport, position],
+  );
 
   const stats = useMemo(() => {
     return {
@@ -210,7 +225,11 @@ export default function MainApp() {
       setMapSearchError('');
 
       try {
-        const results = await searchLocation(query, { lat: position.lat, lng: position.lng });
+        const results = await searchLocation(query, {
+          ...mapSearchBias,
+          mode: 'destination',
+          session: mapSearchSessionRef.current,
+        });
         if (!ignore) {
           setMapSearchResults(results);
           if (!results.length) setMapSearchError('No he encontrado esa ubicación.');
@@ -229,7 +248,7 @@ export default function MainApp() {
       ignore = true;
       window.clearTimeout(timeoutId);
     };
-  }, [mapSearchOpen, mapSearchQuery, position.lat, position.lng]);
+  }, [mapSearchBias, mapSearchOpen, mapSearchQuery]);
 
   function openCreatePlace(prefill = null) {
     setEditingPlace(prefill || { ...emptyPlace });
@@ -268,8 +287,14 @@ export default function MainApp() {
 
     for (const query of [...new Set(queries)]) {
       try {
-        const [result] = await searchLocation(query);
-        if (result) return result;
+        const session = createPlaceSearchSession();
+        const [result] = await searchLocation(query, {
+          ...mapSearchBias,
+          mode: 'place',
+          session,
+          allowTextSearch: true,
+        });
+        if (result) return resolveLocationSuggestion(result, session);
       } catch {
         // Try the next query before falling back to the user position.
       }
@@ -432,24 +457,28 @@ export default function MainApp() {
     setReviewOpen(false);
   }
 
-  function handleInlineSearchSelect(result) {
-    setMapSearchQuery(result.name || result.address || '');
-    setMapSearchResults([]);
+  async function handleInlineSearchSelect(result) {
+    setMapSearchLoading(true);
     setMapSearchError('');
-    setMapSearchLoading(false);
-    setMapSearchOpen(false);
-    handleSearchSelect(result);
+
+    try {
+      const resolved = await resolveLocationSuggestion(result, mapSearchSessionRef.current);
+      setMapSearchQuery(resolved.name || resolved.address || '');
+      setMapSearchResults([]);
+      setMapSearchOpen(false);
+      await handleSearchSelect(resolved);
+    } catch (error) {
+      setMapSearchError(error.message);
+      setMapSearchOpen(true);
+    } finally {
+      setMapSearchLoading(false);
+    }
   }
 
   async function handleInlineSearchSubmit(event) {
     event.preventDefault();
     const query = mapSearchQuery.trim();
     if (!query) return;
-
-    if (mapSearchResults.length) {
-      handleInlineSearchSelect(mapSearchResults[0]);
-      return;
-    }
 
     if (query.length < 3) {
       setMapSearchOpen(true);
@@ -462,13 +491,14 @@ export default function MainApp() {
     setMapSearchError('');
 
     try {
-      const results = await searchLocation(query, { lat: position.lat, lng: position.lng });
+      const results = await searchLocation(query, {
+        ...mapSearchBias,
+        mode: 'destination',
+        session: mapSearchSessionRef.current,
+        allowTextSearch: true,
+      });
       setMapSearchResults(results);
-      if (results[0]) {
-        handleInlineSearchSelect(results[0]);
-      } else {
-        setMapSearchError('No he encontrado esa ubicación.');
-      }
+      if (!results.length) setMapSearchError('No he encontrado esa ubicación.');
     } catch (error) {
       setMapSearchResults([]);
       setMapSearchError(error.message);
@@ -478,6 +508,7 @@ export default function MainApp() {
   }
 
   function clearInlineSearch() {
+    resetPlaceSearchSession(mapSearchSessionRef.current);
     setMapSearchQuery('');
     setMapSearchResults([]);
     setMapSearchError('');
@@ -517,8 +548,8 @@ export default function MainApp() {
           selectedPlace={selectedPlace}
           userPosition={position}
           center={mapCenter || position}
-          onDirections={openDirections}
           onSelectPlace={selectPlace}
+          onViewportChange={setMapViewport}
         />
       </Box>
 
@@ -637,7 +668,7 @@ export default function MainApp() {
                     {mapSearchResults.map((result, index) => (
                       <ListItemButton
                         key={`${result.id || `${result.name}-${result.lat}-${result.lng}`}-${index}`}
-                        onClick={() => handleInlineSearchSelect(result)}
+                        onClick={() => void handleInlineSearchSelect(result)}
                         sx={{ px: 2, py: 1.15, borderTop: index ? '1px solid rgba(8,75,67,0.08)' : 0 }}
                       >
                         <ListItemText
@@ -825,7 +856,7 @@ export default function MainApp() {
         open={placeDialogOpen}
         place={editingPlace}
         onClose={() => setPlaceDialogOpen(false)}
-        searchBias={position}
+        searchBias={mapSearchBias}
         onSave={async (place) => {
           const saved = await handleSavePlace(place);
           if (saved && place.inboxId) await inboxStore.deleteItem(place.inboxId);

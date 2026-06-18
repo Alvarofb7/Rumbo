@@ -13,37 +13,6 @@ const sourceMatchers = [
   { sourceType: 'google', patterns: ['google.com/maps', 'maps.google.', 'goo.gl/maps', 'maps.app.goo.gl'] },
 ];
 
-const knownTripadvisorHints = {
-  1552307: {
-    name: 'ConTenedor',
-    address: 'Calle San Luis, 50, 41003 Sevilla',
-    zone: 'San Julián',
-    lat: 37.39842,
-    lng: -5.9879244,
-  },
-  12014538: {
-    name: 'La Comilona',
-    address: 'C. Luis Arenas Ladislao, s/n, 41005 Sevilla',
-    zone: 'La Buhaira',
-    lat: 37.3852935,
-    lng: -5.9718449,
-  },
-  16809015: {
-    name: 'Ojala Tapas y Vinos',
-    address: 'Calle Relator, 38, 41002 Sevilla',
-    zone: 'Feria',
-    lat: 37.4002734,
-    lng: -5.9907373,
-  },
-  18817162: {
-    name: 'MareaViva',
-    address: 'C. Luis Arenas Ladislao, 151, 41005 Sevilla',
-    zone: 'La Buhaira',
-    lat: 37.385741,
-    lng: -5.97161,
-  },
-};
-
 function decodeHtml(value = '') {
   return value
     .replace(/&amp;/g, '&')
@@ -385,44 +354,11 @@ function normalizeForMatch(value = '') {
     .replace(/[^a-z0-9]/g, '');
 }
 
-function inferCountryCode(value = '') {
-  const normalized = normalizeForMatch(value);
-  if (/(sevilla|seville|espana|spain|andalucia)/.test(normalized)) return 'es';
-  return '';
-}
-
-function inferExpectedCity(value = '') {
-  const normalized = normalizeForMatch(value);
-  if (/(sevilla|seville)/.test(normalized)) return 'sevilla';
-  return '';
-}
-
 function resultMatchesExpectedLocation(result, basePlace = {}, query = '') {
-  const expectedContext = [query, basePlace.zone, basePlace.address].filter(Boolean).join(' ');
-  const expectedCountry = inferCountryCode(expectedContext);
-  const expectedCity = inferExpectedCity(expectedContext);
-  const address = result?.rawAddress || {};
-
-  if (expectedCountry && address.country_code && address.country_code.toLowerCase() !== expectedCountry) return false;
-
-  if (expectedCity) {
-    const resultContext = [
-      address.city,
-      address.town,
-      address.village,
-      address.municipality,
-      address.county,
-      address.province,
-      address.state,
-      result.address,
-    ]
-      .filter(Boolean)
-      .join(' ');
-
-    if (!normalizeForMatch(resultContext).includes(expectedCity)) return false;
-  }
-
-  return true;
+  const expectedZone = normalizeForMatch(basePlace.zone || basePlace.address || '');
+  if (!expectedZone) return true;
+  const resultContext = normalizeForMatch([result?.address, query].filter(Boolean).join(' '));
+  return resultContext.includes(expectedZone) || expectedZone.includes(resultContext);
 }
 
 function isBroadPlaceResult(result) {
@@ -473,9 +409,6 @@ async function searchOpenStreetMap(query, basePlace = {}) {
   url.searchParams.set('addressdetails', '1');
   url.searchParams.set('accept-language', 'es');
   url.searchParams.set('q', query.trim());
-  const countryCode = inferCountryCode([query, basePlace.zone, basePlace.address].filter(Boolean).join(' '));
-  if (countryCode) url.searchParams.set('countrycodes', countryCode);
-
   const response = await fetch(url.toString(), {
     headers: {
       accept: 'application/json',
@@ -571,16 +504,6 @@ async function fetchTripadvisorDetails(basePlace) {
   }
 }
 
-function getKnownTripadvisorHint(basePlace) {
-  const hint = knownTripadvisorHints[basePlace.tripadvisorLocationId];
-  if (!hint) return null;
-
-  return {
-    ...hint,
-    source: 'fallback-verificado',
-  };
-}
-
 function googlePlaceToResult(place, basePlace = {}) {
   const location = place.location || {};
   const lat = Number(location.latitude);
@@ -595,7 +518,6 @@ function googlePlaceToResult(place, basePlace = {}) {
     ),
     lat: Number.isFinite(lat) ? lat : '',
     lng: Number.isFinite(lng) ? lng : '',
-    rating: Number(place.rating || 0),
     source: 'google-places',
   };
 }
@@ -604,16 +526,12 @@ function googleScore(place, basePlace = {}) {
   const resultName = normalizeForMatch(place.displayName?.text || '');
   const baseName = normalizeForMatch(basePlace.name || '');
   const formattedAddress = normalizeForMatch(place.formattedAddress || '');
-  const expectedCity = inferExpectedCity([basePlace.zone, basePlace.address].filter(Boolean).join(' '));
-  const expectedCountry = inferCountryCode([basePlace.zone, basePlace.address].join(' '));
+  const expectedZone = normalizeForMatch(basePlace.zone || basePlace.address || '');
   let score = 0;
 
   if (resultName && baseName && resultName === baseName) score += 5;
   else if (resultName && baseName && (resultName.includes(baseName) || baseName.includes(resultName))) score += 3;
-  if (expectedCity && formattedAddress.includes(expectedCity)) score += 2;
-  if (expectedCountry && inferCountryCode(place.formattedAddress || '') === expectedCountry) score += 1;
-  if (place.rating) score += Math.min(Number(place.rating), 5) / 10;
-
+  if (expectedZone && formattedAddress.includes(expectedZone)) score += 2;
   return score;
 }
 
@@ -621,7 +539,7 @@ async function searchGooglePlaces(basePlace) {
   const apiKey = getGooglePlacesApiKey();
   if (!apiKey || !basePlace.name) return null;
 
-  const query = [basePlace.name, basePlace.address, basePlace.zone || 'Sevilla'].filter(Boolean).join(', ');
+  const query = [basePlace.name, basePlace.address, basePlace.zone].filter(Boolean).join(', ');
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 4500);
 
@@ -633,13 +551,12 @@ async function searchGooglePlaces(basePlace) {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask':
-          'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.googleMapsUri,places.websiteUri,places.addressComponents,places.primaryType,places.types',
+          'places.id,places.displayName,places.formattedAddress,places.location,places.googleMapsUri,places.websiteUri,places.addressComponents,places.primaryType,places.types',
       },
       body: JSON.stringify({
         textQuery: query,
         languageCode: 'es',
-        regionCode: inferCountryCode(query)?.toUpperCase() || undefined,
-        maxResultCount: 5,
+        pageSize: 5,
       }),
     });
 
@@ -673,9 +590,6 @@ async function enrichPlace(basePlace) {
   const googleResult = await searchGooglePlaces(basePlace);
   if (googleResult && googleResult.lat !== '' && googleResult.lng !== '') return googleResult;
 
-  const knownHint = getKnownTripadvisorHint(basePlace);
-  if (knownHint) return knownHint;
-
   const webResult = await searchPublicWeb(basePlace);
   const queries = [
     [basePlace.name, basePlace.zone].filter(Boolean).join(' '),
@@ -699,7 +613,7 @@ async function enrichPlace(basePlace) {
     }
   }
 
-  return tripadvisorResult || googleResult || webResult || knownHint;
+  return tripadvisorResult || googleResult || webResult;
 }
 
 export async function buildImportedPlace(rawUrl) {
