@@ -12,7 +12,7 @@ function hasValidCoordinates(place) {
   return hasValidCoordinate(place?.lat) && hasValidCoordinate(place?.lng);
 }
 
-function createMarkerContent({ color, selected = false, current = false, label = '' }) {
+function createMarkerContent({ color, selected = false, current = false, label = '', onPressStart }) {
   const marker = document.createElement('button');
   marker.type = 'button';
   marker.className = current ? 'rumbo-google-marker rumbo-google-marker--current' : 'rumbo-google-marker';
@@ -20,6 +20,10 @@ function createMarkerContent({ color, selected = false, current = false, label =
   marker.style.setProperty('--marker-size', `${selected ? 28 : current ? 22 : 22}px`);
   marker.title = label;
   marker.setAttribute('aria-label', label);
+  if (onPressStart) {
+    marker.addEventListener('pointerdown', onPressStart);
+    marker.addEventListener('touchstart', onPressStart, { passive: true });
+  }
   return marker;
 }
 
@@ -142,16 +146,19 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
 
     places.filter(hasValidCoordinates).forEach((place) => {
       const selected = selectedPlace?.id === place.id;
+      const suppressMapClick = () => {
+        suppressMapClickUntilRef.current = Date.now() + 400;
+      };
       const marker = new markerClassRef.current({
         map: mapRef.current,
         position: { lat: Number(place.lat), lng: Number(place.lng) },
         title: place.name,
-        content: createMarkerContent({ color: getPlaceColor(place), selected, label: place.name }),
+        content: createMarkerContent({ color: getPlaceColor(place), selected, label: place.name, onPressStart: suppressMapClick }),
         zIndex: selected ? 30 : 10,
         gmpClickable: true,
       });
       marker.addEventListener('gmp-click', (event) => {
-        suppressMapClickUntilRef.current = Date.now() + 400;
+        suppressMapClick();
         event.stopPropagation();
         onSelectPlaceRef.current?.(place);
       });
