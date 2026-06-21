@@ -10,6 +10,17 @@ const zoneTypePriority = [
   'administrative_area_level_1',
 ];
 
+const placeDetailFields = [
+  'id',
+  'displayName',
+  'formattedAddress',
+  'location',
+  'addressComponents',
+  'primaryType',
+  'types',
+  'googleMapsURI',
+];
+
 function hasCoordinates(position) {
   return Number.isFinite(Number(position?.lat)) && Number.isFinite(Number(position?.lng));
 }
@@ -77,12 +88,31 @@ export async function resolveGooglePlaceId(placeId) {
   try {
     const { Place } = await importGoogleLibrary('places');
     const place = new Place({ id: placeId });
-    await place.fetchFields({
-      fields: ['id', 'displayName', 'formattedAddress', 'location', 'addressComponents', 'primaryType', 'types', 'googleMapsURI'],
-    });
+    await place.fetchFields({ fields: placeDetailFields });
     return placeToResult(place);
   } catch {
     throw new Error('No se han podido cargar los detalles de este lugar.');
+  }
+}
+
+export async function resolveGooglePlaceAt(position, radius = 90) {
+  if (!hasCoordinates(position)) return null;
+  if (!hasGoogleMapsConfig()) throw new Error('Falta configurar Google Maps para consultar este lugar.');
+
+  try {
+    const { Place, SearchNearbyRankPreference } = await importGoogleLibrary('places');
+    const { places = [] } = await Place.searchNearby({
+      fields: placeDetailFields,
+      locationRestriction: {
+        center: { lat: Number(position.lat), lng: Number(position.lng) },
+        radius,
+      },
+      maxResultCount: 1,
+      rankPreference: SearchNearbyRankPreference.DISTANCE,
+    });
+    return places[0] ? placeToResult(places[0]) : null;
+  } catch {
+    throw new Error('No se ha podido identificar un lugar cerca de ese punto.');
   }
 }
 

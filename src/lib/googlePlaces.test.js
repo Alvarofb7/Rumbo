@@ -9,6 +9,7 @@ vi.mock('./googleMaps', () => googleMapsMocks);
 
 import {
   createPlaceSearchSession,
+  resolveGooglePlaceAt,
   resolveGooglePlaceId,
   resolveLocationSuggestion,
   searchLocation,
@@ -144,6 +145,42 @@ describe('Google Places search', () => {
       name: 'Seis',
       category: 'restaurant',
       sourceUrl: 'https://maps.google.com/?cid=seis',
+    });
+  });
+
+  it('finds the nearest Google place when a map tap has no place id', async () => {
+    const nearbyPlace = {
+      id: 'place-asador',
+      displayName: 'Asador Montequinto',
+      formattedAddress: 'C. Calígula, 32, Montequinto',
+      location: { lat: () => 37.347, lng: () => -5.94 },
+      addressComponents: [{ longText: 'Montequinto', types: ['locality'] }],
+      primaryType: 'restaurant',
+      types: ['restaurant'],
+      googleMapsURI: 'https://maps.google.com/?cid=asador',
+    };
+    const searchNearby = vi.fn().mockResolvedValue({ places: [nearbyPlace] });
+
+    googleMapsMocks.importGoogleLibrary.mockResolvedValue({
+      Place: { searchNearby },
+      SearchNearbyRankPreference: { DISTANCE: 'DISTANCE' },
+    });
+
+    const result = await resolveGooglePlaceAt({ lat: 37.3471, lng: -5.9402 });
+
+    expect(searchNearby).toHaveBeenCalledWith({
+      fields: ['id', 'displayName', 'formattedAddress', 'location', 'addressComponents', 'primaryType', 'types', 'googleMapsURI'],
+      locationRestriction: {
+        center: { lat: 37.3471, lng: -5.9402 },
+        radius: 90,
+      },
+      maxResultCount: 1,
+      rankPreference: 'DISTANCE',
+    });
+    expect(result).toMatchObject({
+      providerPlaceId: 'place-asador',
+      name: 'Asador Montequinto',
+      category: 'restaurant',
     });
   });
 });

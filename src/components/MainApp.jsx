@@ -37,6 +37,7 @@ import { useUserLocation } from '../hooks/useUserLocation';
 import {
   createPlaceSearchSession,
   resetPlaceSearchSession,
+  resolveGooglePlaceAt,
   resolveGooglePlaceId,
   resolveLocationSuggestion,
   searchLocation,
@@ -557,8 +558,8 @@ export default function MainApp() {
     setGooglePlaceLoading(false);
   }
 
-  async function selectGooglePlace({ placeId }) {
-    const savedPlace = places.find((place) => place.providerPlaceId === placeId);
+  async function selectGooglePlace({ placeId, lat, lng }) {
+    const savedPlace = placeId ? places.find((place) => place.providerPlaceId === placeId) : null;
     if (savedPlace) {
       selectPlace(savedPlace);
       return;
@@ -570,8 +571,16 @@ export default function MainApp() {
     setGooglePlaceLoading(true);
 
     try {
-      const place = await resolveGooglePlaceId(placeId);
+      const place = placeId ? await resolveGooglePlaceId(placeId) : await resolveGooglePlaceAt({ lat, lng });
       if (requestId !== googlePlaceRequestRef.current) return;
+      if (!place) return;
+
+      const matchingSavedPlace = places.find((savedPlace) => savedPlace.providerPlaceId === place.providerPlaceId);
+      if (matchingSavedPlace) {
+        selectPlace(matchingSavedPlace);
+        return;
+      }
+
       setGooglePlacePreview({
         ...emptyPlace,
         ...place,

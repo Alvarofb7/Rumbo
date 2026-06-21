@@ -97,12 +97,14 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
         });
         idleListener = mapRef.current.addListener('idle', () => onViewportChangeRef.current?.(getViewport(mapRef.current)));
         placeClickListener = mapRef.current.addListener('click', (event) => {
-          if (!event.placeId) return;
-          event.stop();
+          if (event.placeId) event.stop();
+          const lat = event.latLng?.lat();
+          const lng = event.latLng?.lng();
+          if (!event.placeId && (!Number.isFinite(lat) || !Number.isFinite(lng))) return;
           onSelectGooglePlaceRef.current?.({
             placeId: event.placeId,
-            lat: event.latLng?.lat(),
-            lng: event.latLng?.lng(),
+            lat,
+            lng,
           });
         });
         setMapReady(true);
@@ -116,6 +118,8 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
       cancelled = true;
       idleListener?.remove();
       placeClickListener?.remove();
+      if (userMarkerRef.current) userMarkerRef.current.map = null;
+      userMarkerRef.current = null;
       mapRef.current = null;
     };
   }, []);
@@ -159,25 +163,26 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
   useEffect(() => {
     if (!mapReady || !mapRef.current || !markerClassRef.current) return undefined;
 
-    if (userMarkerRef.current) {
-      userMarkerRef.current.map = null;
+    if (!hasValidCoordinates(userPosition)) {
+      if (userMarkerRef.current) userMarkerRef.current.map = null;
       userMarkerRef.current = null;
+      return undefined;
     }
 
-    if (hasValidCoordinates(userPosition)) {
+    const position = { lat: Number(userPosition.lat), lng: Number(userPosition.lng) };
+    if (!userMarkerRef.current) {
       userMarkerRef.current = new markerClassRef.current({
         map: mapRef.current,
-        position: { lat: Number(userPosition.lat), lng: Number(userPosition.lng) },
+        position,
         title: 'Tu ubicación',
         content: createMarkerContent({ color: '#1976ff', current: true, label: 'Tu ubicación' }),
         zIndex: 20,
       });
+    } else {
+      userMarkerRef.current.position = position;
+      if (userMarkerRef.current.map !== mapRef.current) userMarkerRef.current.map = mapRef.current;
     }
-
-    return () => {
-      if (userMarkerRef.current) userMarkerRef.current.map = null;
-      userMarkerRef.current = null;
-    };
+    return undefined;
   }, [mapReady, userPosition]);
 
   return (
