@@ -12,25 +12,12 @@ function hasValidCoordinates(place) {
   return hasValidCoordinate(place?.lat) && hasValidCoordinate(place?.lng);
 }
 
-function createMarkerContent({ color, selected = false, current = false, label = '', onPressStart, onActivate }) {
-  const marker = document.createElement('button');
-  marker.type = 'button';
+function createMarkerContent({ color, selected = false, current = false }) {
+  const marker = document.createElement('div');
   marker.className = current ? 'rumbo-google-marker rumbo-google-marker--current' : 'rumbo-google-marker';
   marker.style.setProperty('--marker-color', color);
   marker.style.setProperty('--marker-size', `${selected ? 28 : current ? 22 : 22}px`);
-  marker.title = label;
-  marker.setAttribute('aria-label', label);
-  if (onPressStart) {
-    marker.addEventListener('pointerdown', onPressStart);
-    marker.addEventListener('touchstart', onPressStart, { passive: true });
-  }
-  if (onActivate) {
-    marker.addEventListener('click', (event) => {
-      event.stopPropagation();
-      onPressStart?.();
-      onActivate();
-    });
-  }
+  marker.setAttribute('aria-hidden', 'true');
   return marker;
 }
 
@@ -160,19 +147,13 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
         map: mapRef.current,
         position: { lat: Number(place.lat), lng: Number(place.lng) },
         title: place.name,
-        content: createMarkerContent({
-          color: getPlaceColor(place),
-          selected,
-          label: place.name,
-          onPressStart: suppressMapClick,
-          onActivate: () => onSelectPlaceRef.current?.(place),
-        }),
+        content: createMarkerContent({ color: getPlaceColor(place), selected }),
         zIndex: selected ? 30 : 10,
         gmpClickable: true,
       });
-      marker.addListener('click', (event) => {
+      marker.addEventListener('gmp-click', (event) => {
         suppressMapClick();
-        event.stop();
+        event.stopPropagation();
         onSelectPlaceRef.current?.(place);
       });
       placeMarkersRef.current.push(marker);
@@ -201,7 +182,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
         map: mapRef.current,
         position,
         title: 'Tu ubicación',
-        content: createMarkerContent({ color: '#1976ff', current: true, label: 'Tu ubicación' }),
+        content: createMarkerContent({ color: '#1976ff', current: true }),
         zIndex: 20,
       });
     } else {
