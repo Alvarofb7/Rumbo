@@ -64,9 +64,26 @@ function placeToResult(place) {
     type: place.primaryType || place.types?.[0] || '',
     providerType: place.primaryType || place.types?.[0] || '',
     category: categoryFromGoogleType(place.primaryType || place.types?.[0] || ''),
+    sourceUrl: place.googleMapsURI || '',
     source: 'google-places',
     resolved: true,
   };
+}
+
+export async function resolveGooglePlaceId(placeId) {
+  if (!placeId) throw new Error('Google Maps no ha identificado este lugar.');
+  if (!hasGoogleMapsConfig()) throw new Error('Falta configurar Google Maps para consultar este lugar.');
+
+  try {
+    const { Place } = await importGoogleLibrary('places');
+    const place = new Place({ id: placeId });
+    await place.fetchFields({
+      fields: ['id', 'displayName', 'formattedAddress', 'location', 'addressComponents', 'primaryType', 'types', 'googleMapsURI'],
+    });
+    return placeToResult(place);
+  } catch {
+    throw new Error('No se han podido cargar los detalles de este lugar.');
+  }
 }
 
 export function createPlaceSearchSession() {

@@ -37,6 +37,7 @@ import { useUserLocation } from '../hooks/useUserLocation';
 import {
   createPlaceSearchSession,
   resetPlaceSearchSession,
+  resolveGooglePlaceId,
   resolveLocationSuggestion,
   searchLocation,
 } from '../lib/googlePlaces';
@@ -48,6 +49,7 @@ import LinkImportDialog from './dialogs/LinkImportDialog';
 import MapPanel from './map/MapPanel';
 import PlaceDialog from './dialogs/PlaceDialog';
 import PlacesPanel from './panels/PlacesPanel';
+import GooglePlaceCard from './cards/GooglePlaceCard';
 import SelectedPlaceCard from './cards/SelectedPlaceCard';
 import AppMenuDrawer from './navigation/AppMenuDrawer';
 
@@ -172,8 +174,11 @@ export default function MainApp() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [placesOpen, setPlacesOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [googlePlacePreview, setGooglePlacePreview] = useState(null);
+  const [googlePlaceLoading, setGooglePlaceLoading] = useState(false);
   const [toast, setToast] = useState('');
   const mapSearchSessionRef = useRef(createPlaceSearchSession());
+  const googlePlaceRequestRef = useRef(0);
 
   const places = placesStore.items;
   const inbox = inboxStore.items;
@@ -258,6 +263,9 @@ export default function MainApp() {
   }, [mapSearchBias, mapSearchOpen, mapSearchQuery]);
 
   function openCreatePlace(prefill = null) {
+    googlePlaceRequestRef.current += 1;
+    setGooglePlacePreview(null);
+    setGooglePlaceLoading(false);
     setEditingPlace(prefill || { ...emptyPlace });
     setPlaceDialogOpen(true);
   }
@@ -454,6 +462,9 @@ export default function MainApp() {
   }
 
   async function handleSearchSelect(result) {
+    googlePlaceRequestRef.current += 1;
+    setGooglePlacePreview(null);
+    setGooglePlaceLoading(false);
     setSelectedPlaceId(null);
     setMapCenter({ lat: result.lat, lng: result.lng });
     if (locationStatus !== 'ready') {
@@ -524,14 +535,54 @@ export default function MainApp() {
 
   function selectPlace(place) {
     if (!hasValidCoordinates(place)) return;
+    googlePlaceRequestRef.current += 1;
+    setGooglePlacePreview(null);
+    setGooglePlaceLoading(false);
     setSelectedPlaceId(place.id);
     setMapCenter({ lat: Number(place.lat), lng: Number(place.lng) });
     if (!isDesktop) setPlacesOpen(false);
   }
 
   function centerOnUser() {
+    googlePlaceRequestRef.current += 1;
+    setGooglePlacePreview(null);
+    setGooglePlaceLoading(false);
     setSelectedPlaceId(null);
     setMapCenter({ lat: position.lat, lng: position.lng });
+  }
+
+  function closeGooglePlacePreview() {
+    googlePlaceRequestRef.current += 1;
+    setGooglePlacePreview(null);
+    setGooglePlaceLoading(false);
+  }
+
+  async function selectGooglePlace({ placeId }) {
+    const savedPlace = places.find((place) => place.providerPlaceId === placeId);
+    if (savedPlace) {
+      selectPlace(savedPlace);
+      return;
+    }
+
+    const requestId = ++googlePlaceRequestRef.current;
+    setSelectedPlaceId(null);
+    setGooglePlacePreview(null);
+    setGooglePlaceLoading(true);
+
+    try {
+      const place = await resolveGooglePlaceId(placeId);
+      if (requestId !== googlePlaceRequestRef.current) return;
+      setGooglePlacePreview({
+        ...emptyPlace,
+        ...place,
+        sourceType: 'google',
+        sourceUrl: place.sourceUrl || '',
+      });
+    } catch (error) {
+      if (requestId === googlePlaceRequestRef.current) setToast(error.message);
+    } finally {
+      if (requestId === googlePlaceRequestRef.current) setGooglePlaceLoading(false);
+    }
   }
 
   function openDirections(place) {
@@ -554,6 +605,7 @@ export default function MainApp() {
           userPosition={position}
           center={mapCenter}
           onSelectPlace={selectPlace}
+          onSelectGooglePlace={selectGooglePlace}
           onViewportChange={setMapViewport}
         />
       </Box>
@@ -753,7 +805,7 @@ export default function MainApp() {
         </Button>
       )}
 
-      {locationStatus !== 'ready' && locationError && !selectedPlace && (
+      {locationStatus !== 'ready' && locationError && !selectedPlace && !googlePlacePreview && !googlePlaceLoading && (
         <Paper
           elevation={0}
           sx={{
@@ -786,7 +838,7 @@ export default function MainApp() {
             position: 'absolute',
             left: { xs: 12, md: 18 },
             right: { xs: 12, md: 'auto' },
-            bottom: selectedPlace ? 'calc(154px + env(safe-area-inset-bottom))' : 'calc(88px + env(safe-area-inset-bottom))',
+            bottom: selectedPlace || googlePlacePreview || googlePlaceLoading ? 'calc(154px + env(safe-area-inset-bottom))' : 'calc(88px + env(safe-area-inset-bottom))',
             zIndex: 980,
             width: { md: 390 },
             borderRadius: '14px',
@@ -805,7 +857,7 @@ export default function MainApp() {
           position: 'absolute',
           right: { xs: 16, md: 22 },
           bottom: 'calc(18px + env(safe-area-inset-bottom))',
-          display: selectedPlace ? 'none' : 'inline-flex',
+          display: selectedPlace || googlePlacePreview || googlePlaceLoading ? 'none' : 'inline-flex',
           zIndex: 950,
           width: 60,
           height: 60,
@@ -820,6 +872,13 @@ export default function MainApp() {
         onClose={() => setSelectedPlaceId(null)}
         onDirections={openDirections}
         onEdit={openEditPlace}
+      />
+
+      <GooglePlaceCard
+        place={googlePlacePreview}
+        loading={googlePlaceLoading}
+        onClose={closeGooglePlacePreview}
+        onSave={(place) => openCreatePlace(place)}
       />
 
       <DataDrawer

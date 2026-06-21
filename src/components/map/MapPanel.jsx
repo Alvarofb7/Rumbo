@@ -43,13 +43,14 @@ function getViewport(map) {
   };
 }
 
-export default function MapPanel({ places, selectedPlace, userPosition, center, onSelectPlace, onViewportChange }) {
+export default function MapPanel({ places, selectedPlace, userPosition, center, onSelectPlace, onSelectGooglePlace, onViewportChange }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const markerClassRef = useRef(null);
   const placeMarkersRef = useRef([]);
   const userMarkerRef = useRef(null);
   const onSelectPlaceRef = useRef(onSelectPlace);
+  const onSelectGooglePlaceRef = useRef(onSelectGooglePlace);
   const onViewportChangeRef = useRef(onViewportChange);
   const latestCenterRef = useRef(center || userPosition || defaultCenter);
   const [mapReady, setMapReady] = useState(false);
@@ -58,6 +59,10 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
   useEffect(() => {
     onSelectPlaceRef.current = onSelectPlace;
   }, [onSelectPlace]);
+
+  useEffect(() => {
+    onSelectGooglePlaceRef.current = onSelectGooglePlace;
+  }, [onSelectGooglePlace]);
 
   useEffect(() => {
     onViewportChangeRef.current = onViewportChange;
@@ -70,6 +75,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
   useEffect(() => {
     let cancelled = false;
     let idleListener;
+    let placeClickListener;
 
     async function initializeMap() {
       try {
@@ -85,11 +91,20 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
           zoom: 14,
           mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID?.trim() || 'DEMO_MAP_ID',
           disableDefaultUI: true,
-          clickableIcons: false,
+          clickableIcons: true,
           gestureHandling: 'greedy',
           backgroundColor: '#eef1ea',
         });
         idleListener = mapRef.current.addListener('idle', () => onViewportChangeRef.current?.(getViewport(mapRef.current)));
+        placeClickListener = mapRef.current.addListener('click', (event) => {
+          if (!event.placeId) return;
+          event.stop();
+          onSelectGooglePlaceRef.current?.({
+            placeId: event.placeId,
+            lat: event.latLng?.lat(),
+            lng: event.latLng?.lng(),
+          });
+        });
         setMapReady(true);
       } catch (error) {
         if (!cancelled) setMapError(error.message);
@@ -100,6 +115,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
     return () => {
       cancelled = true;
       idleListener?.remove();
+      placeClickListener?.remove();
       mapRef.current = null;
     };
   }, []);

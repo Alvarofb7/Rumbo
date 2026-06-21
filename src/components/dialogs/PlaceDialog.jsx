@@ -223,7 +223,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       } finally {
         if (!ignore && requestId === locationRequestIdRef.current) setLocationLoading(false);
       }
-    }, 450);
+    }, 300);
 
     return () => {
       ignore = true;

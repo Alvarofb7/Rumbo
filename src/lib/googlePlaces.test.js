@@ -9,6 +9,7 @@ vi.mock('./googleMaps', () => googleMapsMocks);
 
 import {
   createPlaceSearchSession,
+  resolveGooglePlaceId,
   resolveLocationSuggestion,
   searchLocation,
 } from './googlePlaces';
@@ -112,5 +113,37 @@ describe('Google Places search', () => {
       lng: -5.9963925,
     });
     expect(session.token).toBeNull();
+  });
+
+  it('loads a clicked Google Maps place by its place id', async () => {
+    const fetchFields = vi.fn().mockResolvedValue(undefined);
+
+    class Place {
+      constructor({ id }) {
+        this.id = id;
+        this.displayName = 'Seis';
+        this.formattedAddress = 'Plaza Nueva, 7, Sevilla';
+        this.location = { lat: () => 37.388222, lng: () => -5.9963925 };
+        this.addressComponents = [{ longText: 'Sevilla', types: ['locality'] }];
+        this.primaryType = 'restaurant';
+        this.types = ['restaurant'];
+        this.googleMapsURI = 'https://maps.google.com/?cid=seis';
+        this.fetchFields = fetchFields;
+      }
+    }
+
+    googleMapsMocks.importGoogleLibrary.mockResolvedValue({ Place });
+
+    const result = await resolveGooglePlaceId('place-seis');
+
+    expect(fetchFields).toHaveBeenCalledWith({
+      fields: ['id', 'displayName', 'formattedAddress', 'location', 'addressComponents', 'primaryType', 'types', 'googleMapsURI'],
+    });
+    expect(result).toMatchObject({
+      providerPlaceId: 'place-seis',
+      name: 'Seis',
+      category: 'restaurant',
+      sourceUrl: 'https://maps.google.com/?cid=seis',
+    });
   });
 });
