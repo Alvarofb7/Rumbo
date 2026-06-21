@@ -575,6 +575,7 @@ export default function MainApp() {
       setGooglePlacePreview({
         ...emptyPlace,
         ...place,
+        id: '',
         sourceType: 'google',
         sourceUrl: place.sourceUrl || '',
       });
