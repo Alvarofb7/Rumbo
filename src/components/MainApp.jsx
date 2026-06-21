@@ -565,7 +565,13 @@ export default function MainApp() {
       ? null
       : places
           .filter(hasValidCoordinates)
-          .map((place) => ({ place, distance: distanceInMeters({ lat: Number(lat), lng: Number(lng) }, place) }))
+          .map((place) => ({
+            place,
+            distance: distanceInMeters(
+              { lat: Number(lat), lng: Number(lng) },
+              { lat: Number(place.lat), lng: Number(place.lng) },
+            ),
+          }))
           .filter(({ distance }) => distance <= 90)
           .sort((first, second) => first.distance - second.distance)[0]?.place;
     const savedPlace = exactSavedPlace || nearbySavedPlace;
