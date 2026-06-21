@@ -26,7 +26,7 @@ import PlaceIcon from '@mui/icons-material/Place';
 import { useTheme } from '@mui/material/styles';
 import { statusOptions, tagOptions } from '../../data/demoData';
 import { inferSourceType } from '../../lib/linkParser';
-import { categoryOptions, inferPlaceCategory, normalizePlaceTags } from '../../lib/placeData';
+import { categoryOptions, inferPlaceCategory, normalizePlaceRating, normalizePlaceTags } from '../../lib/placeData';
 import {
   createPlaceSearchSession,
   resetPlaceSearchSession,
@@ -79,6 +79,79 @@ function hasUsableCoordinates(lat, lng) {
   return lat !== '' && lng !== '' && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
 }
 
+function PersonalRating({ value, onChange }) {
+  const rating = normalizePlaceRating(value);
+
+  function handleClick(event) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const offset = Math.min(bounds.width, Math.max(0, event.clientX - bounds.left));
+    onChange(Math.min(5, Math.max(0.5, Math.ceil((offset / bounds.width) * 10) / 2)));
+  }
+
+  function handleKeyDown(event) {
+    const increments = {
+      ArrowLeft: -0.5,
+      ArrowDown: -0.5,
+      ArrowRight: 0.5,
+      ArrowUp: 0.5,
+    };
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      onChange(0);
+      return;
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      onChange(5);
+      return;
+    }
+
+    if (increments[event.key]) {
+      event.preventDefault();
+      onChange(normalizePlaceRating(rating + increments[event.key]));
+    }
+  }
+
+  return (
+    <Stack direction="row" spacing={1.4} alignItems="center">
+      <Box
+        role="slider"
+        tabIndex={0}
+        aria-label="Ranking personal"
+        aria-valuemin={0}
+        aria-valuemax={5}
+        aria-valuenow={rating}
+        aria-valuetext={`${rating} estrellas`}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        sx={{
+          display: 'inline-flex',
+          p: 0.75,
+          mx: -0.75,
+          borderRadius: '8px',
+          cursor: 'pointer',
+          touchAction: 'manipulation',
+          '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
+        }}
+      >
+        <Rating
+          precision={0.5}
+          value={rating}
+          getLabelText={(nextValue) => `${nextValue} estrellas`}
+          size="large"
+          readOnly
+          sx={{ pointerEvents: 'none' }}
+        />
+      </Box>
+      <Typography fontWeight={900} color="secondary.dark">
+        {rating.toFixed(1).replace('.', ',')}
+      </Typography>
+    </Stack>
+  );
+}
+
 export default function PlaceDialog({ open, place, onClose, onSave, searchBias }) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
@@ -97,6 +170,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       locationRequestIdRef.current += 1;
       resetPlaceSearchSession(searchSessionRef.current);
       const nextDraft = { ...blankPlace, ...place };
+      nextDraft.rating = normalizePlaceRating(nextDraft.rating);
       const initialLocationQuery = nextDraft.address || nextDraft.name || '';
       const initialHasCoordinates = hasUsableCoordinates(nextDraft.lat, nextDraft.lng);
 
@@ -206,6 +280,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       address: draft.address.trim(),
       zone: draft.zone.trim(),
       category,
+      rating: normalizePlaceRating(draft.rating),
       tags: normalizePlaceTags(draft.tags, category),
       sourceType: sourceUrl ? inferSourceType(sourceUrl) : draft.sourceType || 'manual',
       sourceUrl,
@@ -359,18 +434,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
                 <Typography fontWeight={850} sx={{ mb: 0.5 }}>
                   Ranking personal
                 </Typography>
-                <Stack direction="row" spacing={1.4} alignItems="center">
-                  <Rating
-                    precision={0.5}
-                    value={Number(draft.rating || 0)}
-                    onChange={(_, value) => update('rating', value || 0)}
-                    getLabelText={(value) => `${value} estrellas`}
-                    size="large"
-                  />
-                  <Typography fontWeight={900} color="secondary.dark">
-                    {Number(draft.rating || 0).toFixed(1)}
-                  </Typography>
-                </Stack>
+                <PersonalRating value={draft.rating} onChange={(value) => update('rating', value)} />
               </Box>
 
               <Autocomplete

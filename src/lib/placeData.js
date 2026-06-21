@@ -54,8 +54,14 @@ export function getCategoryLabel(category) {
   return categoryOptions.find((option) => option.value === category)?.label || 'Otro';
 }
 
+export function normalizePlaceRating(value) {
+  const rating = Number(value);
+  if (!Number.isFinite(rating)) return 0;
+  return Math.min(5, Math.max(0, Math.round(rating * 2) / 2));
+}
+
 export function inferPlaceCategory(place = {}) {
-  if (categoryValues.has(place.category) && place.category !== 'other') return place.category;
+  if (categoryValues.has(place.category)) return place.category;
 
   const providerTypes = [place.providerType, place.type, ...(place.types || [])].filter(Boolean);
   const providerCategory = providerTypes.map(categoryFromGoogleType).find((category) => category !== 'other');
