@@ -170,9 +170,9 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
         zIndex: selected ? 30 : 10,
         gmpClickable: true,
       });
-      marker.addEventListener('gmp-click', (event) => {
+      marker.addListener('click', (event) => {
         suppressMapClick();
-        event.stopPropagation();
+        event.stop();
         onSelectPlaceRef.current?.(place);
       });
       placeMarkersRef.current.push(marker);
