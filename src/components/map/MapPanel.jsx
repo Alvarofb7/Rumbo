@@ -49,6 +49,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
   const markerClassRef = useRef(null);
   const placeMarkersRef = useRef([]);
   const userMarkerRef = useRef(null);
+  const suppressMapClickUntilRef = useRef(0);
   const onSelectPlaceRef = useRef(onSelectPlace);
   const onSelectGooglePlaceRef = useRef(onSelectGooglePlace);
   const onViewportChangeRef = useRef(onViewportChange);
@@ -97,6 +98,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
         });
         idleListener = mapRef.current.addListener('idle', () => onViewportChangeRef.current?.(getViewport(mapRef.current)));
         placeClickListener = mapRef.current.addListener('click', (event) => {
+          if (Date.now() < suppressMapClickUntilRef.current) return;
           if (event.placeId) event.stop();
           const lat = event.latLng?.lat();
           const lng = event.latLng?.lng();
@@ -148,7 +150,11 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
         zIndex: selected ? 30 : 10,
         gmpClickable: true,
       });
-      marker.addEventListener('gmp-click', () => onSelectPlaceRef.current?.(place));
+      marker.addEventListener('gmp-click', (event) => {
+        suppressMapClickUntilRef.current = Date.now() + 400;
+        event.stopPropagation();
+        onSelectPlaceRef.current?.(place);
+      });
       placeMarkersRef.current.push(marker);
     });
 
