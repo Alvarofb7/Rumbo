@@ -27,6 +27,29 @@ export function formatDistance(meters) {
   return `${(meters / 1000).toFixed(meters < 10000 ? 1 : 0).replace('.', ',')} km`;
 }
 
+export function findNearestPlace(position, places = [], maxDistance = Number.POSITIVE_INFINITY) {
+  const origin = {
+    lat: position?.lat === '' ? Number.NaN : Number(position?.lat),
+    lng: position?.lng === '' ? Number.NaN : Number(position?.lng),
+  };
+  let nearestPlace = null;
+  let nearestDistance = maxDistance;
+
+  places.forEach((place) => {
+    const candidate = {
+      lat: place?.lat === '' ? Number.NaN : Number(place?.lat),
+      lng: place?.lng === '' ? Number.NaN : Number(place?.lng),
+    };
+    const distance = distanceInMeters(origin, candidate);
+    if (distance <= nearestDistance) {
+      nearestPlace = place;
+      nearestDistance = distance;
+    }
+  });
+
+  return nearestPlace;
+}
+
 export function normalizeCoordinate(value, fallback) {
   if (value === '' || value === null || value === undefined) return fallback;
   const parsed = Number(value);

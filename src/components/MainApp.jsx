@@ -42,7 +42,7 @@ import {
   resolveLocationSuggestion,
   searchLocation,
 } from '../lib/googlePlaces';
-import { distanceInMeters } from '../lib/geo';
+import { findNearestPlace } from '../lib/geo';
 import { importPlaceFromUrl } from '../lib/placeImporter';
 import { getPlaceRecordMigration, sanitizePlaceRecord } from '../lib/placeData';
 import FilterDrawer from './filters/FilterDrawer';
@@ -561,19 +561,7 @@ export default function MainApp() {
 
   async function selectGooglePlace({ placeId, lat, lng }) {
     const exactSavedPlace = placeId ? places.find((place) => place.providerPlaceId === placeId) : null;
-    const nearbySavedPlace = placeId
-      ? null
-      : places
-          .filter(hasValidCoordinates)
-          .map((place) => ({
-            place,
-            distance: distanceInMeters(
-              { lat: Number(lat), lng: Number(lng) },
-              { lat: Number(place.lat), lng: Number(place.lng) },
-            ),
-          }))
-          .filter(({ distance }) => distance <= 90)
-          .sort((first, second) => first.distance - second.distance)[0]?.place;
+    const nearbySavedPlace = findNearestPlace({ lat, lng }, places, 90);
     const savedPlace = exactSavedPlace || nearbySavedPlace;
     if (savedPlace) {
       selectPlace(savedPlace);
