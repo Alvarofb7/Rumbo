@@ -58,4 +58,12 @@ describe('iPhone-first safeguards', () => {
     expect(placesPanel).toContain('minHeight: 48');
     expect(placesPanel).not.toContain('justifyContent="flex-end"');
   });
+
+  it('keeps map filters aligned with the current place model', () => {
+    const filters = read('src/components/filters/FilterDrawer.jsx');
+    expect(filters).not.toContain('Buscar pins o notas');
+    expect(filters).toContain('multiple');
+    expect(filters).toContain('Sin etiquetas disponibles');
+    expect(filters).toContain('<MenuItem value="all">Todas</MenuItem>');
+  });
 });

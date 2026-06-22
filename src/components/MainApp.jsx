@@ -74,11 +74,10 @@ const emptyPlace = {
 };
 
 const initialFilters = {
-  search: '',
   tags: [],
   status: 'all',
   minRating: 0,
-  zone: '',
+  zone: 'all',
   sort: 'nearest',
 };
 
@@ -92,11 +91,10 @@ function hasValidCoordinates(place) {
 
 function activeFilterCount(filters) {
   return [
-    filters.search.trim(),
     filters.tags.length,
     filters.status !== 'all',
     filters.minRating > 0,
-    filters.zone,
+    filters.zone !== 'all',
   ].filter(Boolean).length;
 }
 

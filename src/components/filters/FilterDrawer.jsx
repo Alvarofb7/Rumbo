@@ -1,16 +1,16 @@
 import {
   Box,
   Button,
-  Chip,
-  Divider,
+  Checkbox,
   Drawer,
   FormControl,
+  FormHelperText,
   InputLabel,
+  ListItemText,
   MenuItem,
   Select,
   Slider,
   Stack,
-  TextField,
   Typography,
 } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
@@ -24,11 +24,6 @@ export default function FilterDrawer({ open, filters, setFilters, onClose, place
     setFilters((current) => ({ ...current, ...nextPatch }));
   }
 
-  function toggleTag(tag) {
-    const nextTags = filters.tags.includes(tag) ? filters.tags.filter((item) => item !== tag) : [...filters.tags, tag];
-    patch({ tags: nextTags });
-  }
-
   return (
     <Drawer anchor="bottom" open={open} onClose={onClose} PaperProps={{ sx: { borderRadius: '16px 16px 0 0', maxHeight: '88dvh' } }}>
       <Box sx={{ width: '100%', maxWidth: 720, mx: 'auto', p: 2, pb: `calc(18px + env(safe-area-inset-bottom))` }}>
@@ -37,14 +32,12 @@ export default function FilterDrawer({ open, filters, setFilters, onClose, place
             <FilterListIcon color="primary" />
             <Box sx={{ flex: 1 }}>
               <Typography variant="h3">Filtrar mapa</Typography>
-              <Typography color="text.secondary">Sólo cambia los pins visibles en el mapa.</Typography>
+              <Typography color="text.secondary">Solo cambia los lugares visibles en el mapa.</Typography>
             </Box>
-            <Button onClick={() => setFilters({ search: '', tags: [], status: 'all', minRating: 0, zone: '', sort: 'nearest' })}>
+            <Button onClick={() => setFilters({ tags: [], status: 'all', minRating: 0, zone: 'all', sort: 'nearest' })}>
               Limpiar
             </Button>
           </Stack>
-
-          <TextField label="Buscar pins o notas" value={filters.search} onChange={(event) => patch({ search: event.target.value })} fullWidth />
 
           <FormControl fullWidth>
             <InputLabel>Estado</InputLabel>
@@ -61,7 +54,7 @@ export default function FilterDrawer({ open, filters, setFilters, onClose, place
           <FormControl fullWidth>
             <InputLabel>Zona</InputLabel>
             <Select label="Zona" value={filters.zone} onChange={(event) => patch({ zone: event.target.value })}>
-              <MenuItem value="">Todas</MenuItem>
+              <MenuItem value="all">Todas</MenuItem>
               {zones.map((zone) => (
                 <MenuItem key={zone} value={zone}>
                   {zone}
@@ -75,24 +68,33 @@ export default function FilterDrawer({ open, filters, setFilters, onClose, place
             <Slider min={0} max={5} step={0.5} value={filters.minRating} onChange={(_, value) => patch({ minRating: value })} />
           </Box>
 
-          <Divider />
-
-          <Box>
-            <Typography variant="h4" sx={{ mb: 1 }}>
-              Etiquetas
-            </Typography>
-            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+          <FormControl fullWidth disabled={!availableTags.length}>
+            <InputLabel shrink>Etiquetas</InputLabel>
+            <Select
+              multiple
+              displayEmpty
+              label="Etiquetas"
+              value={filters.tags}
+              onChange={(event) => {
+                const value = event.target.value;
+                patch({ tags: typeof value === 'string' ? value.split(',') : value });
+              }}
+              renderValue={(selected) => {
+                if (!availableTags.length) return 'Sin etiquetas disponibles';
+                return selected.length ? selected.join(', ') : 'Todas';
+              }}
+            >
               {availableTags.map((tag) => (
-                <Chip
-                  key={tag}
-                  label={tag}
-                  color={filters.tags.includes(tag) ? 'primary' : 'default'}
-                  variant={filters.tags.includes(tag) ? 'filled' : 'outlined'}
-                  onClick={() => toggleTag(tag)}
-                />
+                <MenuItem key={tag} value={tag}>
+                  <Checkbox checked={filters.tags.includes(tag)} />
+                  <ListItemText primary={tag} />
+                </MenuItem>
               ))}
-            </Stack>
-          </Box>
+            </Select>
+            <FormHelperText>
+              {availableTags.length ? 'Puedes seleccionar varias.' : 'Añade etiquetas a algún lugar para filtrarlas aquí.'}
+            </FormHelperText>
+          </FormControl>
 
           <Button variant="contained" onClick={onClose}>
             Aplicar
