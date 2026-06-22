@@ -37,4 +37,13 @@ describe('iPhone-first safeguards', () => {
     expect(read('src/components/navigation/AppMenuDrawer.jsx')).toContain('Importar enlace');
     expect(read('src/components/MainApp.jsx')).toContain('Deshacer');
   });
+
+  it('collects real iPhone performance and shareable diagnostics', () => {
+    const app = read('src/App.jsx');
+    const menu = read('src/components/navigation/AppMenuDrawer.jsx');
+    expect(app).toContain('<Analytics />');
+    expect(app).toContain('<SpeedInsights />');
+    expect(read('src/main.jsx')).toContain('installGlobalDiagnostics');
+    expect(menu).toContain('Compartir diagnóstico');
+  });
 });

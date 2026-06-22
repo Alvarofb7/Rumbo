@@ -43,6 +43,7 @@ import {
   searchLocation,
 } from '../lib/googlePlaces';
 import { findNearestPlace } from '../lib/geo';
+import { captureDiagnostic, recordBreadcrumb } from '../lib/diagnostics';
 import { importPlaceFromUrl } from '../lib/placeImporter';
 import { getPlaceRecordMigration, sanitizePlaceRecord } from '../lib/placeData';
 import FilterDrawer from './filters/FilterDrawer';
@@ -271,6 +272,7 @@ export default function MainApp() {
         }
       } catch (error) {
         if (!ignore) {
+          captureDiagnostic('search.main.suggestions', error);
           setMapSearchResults([]);
           setMapSearchError(error.message);
         }
@@ -385,10 +387,13 @@ export default function MainApp() {
 
   async function handleSavePlace(place) {
     let result;
+    const mode = place.id ? 'edit' : 'create';
+    recordBreadcrumb('place.save.started', { mode });
 
     try {
       result = await buildPlacePayload(place);
     } catch (error) {
+      captureDiagnostic('place.save.location', error, { mode });
       setToast(error.message);
       return false;
     }
@@ -409,6 +414,7 @@ export default function MainApp() {
     setPlaceDialogOpen(false);
     setPlacesOpen(false);
     setReviewOpen(false);
+    recordBreadcrumb('place.save.completed', { mode });
     return true;
   }
 
@@ -441,11 +447,13 @@ export default function MainApp() {
   }
 
   async function handleImportLink(url) {
+    recordBreadcrumb('link.import.started');
     const candidate = await importPlaceFromUrl(url);
     await inboxStore.addItem(candidate);
     setLinkDialogOpen(false);
     openReview();
     setToast('Enlace analizado. Revísalo antes de guardarlo.');
+    recordBreadcrumb('link.import.completed', { sourceType: candidate.sourceType || 'unknown' });
   }
 
   async function handleSaveInboxItem(item) {
@@ -469,6 +477,7 @@ export default function MainApp() {
     try {
       result = await buildPlacePayload(place, { allowCurrentFallback: false });
     } catch (error) {
+      captureDiagnostic('inbox.save.location', error);
       setToast(error.message);
       return;
     }
@@ -531,6 +540,7 @@ export default function MainApp() {
       setMapSearchOpen(false);
       await handleSearchSelect(resolved);
     } catch (error) {
+      captureDiagnostic('search.main.resolve', error);
       setMapSearchError(error.message);
       setMapSearchOpen(true);
     } finally {
@@ -562,6 +572,7 @@ export default function MainApp() {
       setMapSearchResults(results);
       if (!results.length) setMapSearchError('No he encontrado esa ubicación.');
     } catch (error) {
+      captureDiagnostic('search.main.submit', error);
       setMapSearchResults([]);
       setMapSearchError(error.message);
     } finally {
@@ -589,6 +600,7 @@ export default function MainApp() {
   }
 
   async function centerOnUser() {
+    recordBreadcrumb('location.button.tapped');
     googlePlaceRequestRef.current += 1;
     setGooglePlacePreview(null);
     setGooglePlaceLoading(false);
@@ -596,6 +608,7 @@ export default function MainApp() {
     const livePosition = await requestLivePosition();
     const nextPosition = livePosition || position;
     setMapCenter({ lat: nextPosition.lat, lng: nextPosition.lng });
+    recordBreadcrumb('location.button.completed', { live: Boolean(livePosition) });
   }
 
   async function retrySync() {
@@ -609,6 +622,7 @@ export default function MainApp() {
   }
 
   async function selectGooglePlace({ placeId, lat, lng }) {
+    recordBreadcrumb('map.google-place.tapped', { hasPlaceId: Boolean(placeId) });
     const exactSavedPlace = placeId ? places.find((place) => place.providerPlaceId === placeId) : null;
     const nearbySavedPlace = findNearestPlace({ lat, lng }, places, 90);
     const savedPlace = exactSavedPlace || nearbySavedPlace;
@@ -640,8 +654,12 @@ export default function MainApp() {
         sourceType: 'google',
         sourceUrl: place.sourceUrl || '',
       });
+      recordBreadcrumb('map.google-place.previewed', { hasPlaceId: Boolean(place.providerPlaceId) });
     } catch (error) {
-      if (requestId === googlePlaceRequestRef.current) setToast(error.message);
+      if (requestId === googlePlaceRequestRef.current) {
+        captureDiagnostic('map.google-place.resolve', error, { hasPlaceId: Boolean(placeId) });
+        setToast(error.message);
+      }
     } finally {
       if (requestId === googlePlaceRequestRef.current) setGooglePlaceLoading(false);
     }

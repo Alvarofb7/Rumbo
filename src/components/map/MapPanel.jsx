@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Box, CircularProgress } from '@mui/material';
 import { defaultCenter } from '../../data/demoData';
+import { captureDiagnostic, recordBreadcrumb } from '../../lib/diagnostics';
 import { importGoogleLibrary } from '../../lib/googleMaps';
 import { getPlaceColor } from '../common/placeUtils';
 
@@ -101,6 +102,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
           const lat = event.latLng?.lat();
           const lng = event.latLng?.lng();
           if (!event.placeId && (!Number.isFinite(lat) || !Number.isFinite(lng))) return;
+          recordBreadcrumb('map.google-place.click-received', { hasPlaceId: Boolean(event.placeId) });
           onSelectGooglePlaceRef.current?.({
             placeId: event.placeId,
             lat,
@@ -109,7 +111,10 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
         });
         setMapReady(true);
       } catch (error) {
-        if (!cancelled) setMapError(error.message);
+        if (!cancelled) {
+          captureDiagnostic('map.initialize', error);
+          setMapError(error.message);
+        }
       }
     }
 
@@ -154,6 +159,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
       marker.addEventListener('gmp-click', (event) => {
         suppressMapClick();
         event.stopPropagation();
+        recordBreadcrumb('map.saved-place.click-received');
         onSelectPlaceRef.current?.(place);
       });
       placeMarkersRef.current.push(marker);

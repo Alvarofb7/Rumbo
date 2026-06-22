@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { defaultCenter } from '../data/demoData';
+import { captureDiagnostic } from '../lib/diagnostics';
 
 const manualPositionKey = 'rumbo.manualPosition';
 const lastPositionKey = 'rumbo.lastPosition';
@@ -123,6 +124,9 @@ export function useUserLocation() {
       navigator.geolocation.getCurrentPosition(
         (result) => resolve(applyLivePosition(result)),
         (locationError) => {
+          if (locationError.code !== 1) {
+            captureDiagnostic('location.request', locationError, { code: locationError.code });
+          }
           if (livePositionVersionRef.current > livePositionVersion) {
             resolve(currentPositionRef.current);
             return;

@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import LinkIcon from '@mui/icons-material/Link';
 import { useTheme } from '@mui/material/styles';
+import { captureDiagnostic } from '../../lib/diagnostics';
 
 function looksLikeUrl(value) {
   const trimmed = value.trim();
@@ -57,6 +58,7 @@ export default function LinkImportDialog({ open, onClose, onImport }) {
       await onImport(trimmed);
       setQuery('');
     } catch (actionError) {
+      captureDiagnostic('link.import', actionError);
       setError(actionError.message);
     } finally {
       setLoading(false);

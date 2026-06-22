@@ -25,6 +25,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import PlaceIcon from '@mui/icons-material/Place';
 import { useTheme } from '@mui/material/styles';
 import { statusOptions, tagOptions } from '../../data/demoData';
+import { captureDiagnostic, recordBreadcrumb } from '../../lib/diagnostics';
 import { inferSourceType } from '../../lib/linkParser';
 import { categoryOptions, inferPlaceCategory, normalizePlaceRating, normalizePlaceTags } from '../../lib/placeData';
 import {
@@ -120,10 +121,16 @@ function hasUsableCoordinates(lat, lng) {
 function PersonalRating({ value, onChange }) {
   const rating = normalizePlaceRating(value);
 
+  function commitRating(nextValue) {
+    const normalizedRating = normalizePlaceRating(nextValue);
+    recordBreadcrumb('form.rating.changed', { value: normalizedRating });
+    onChange(normalizedRating);
+  }
+
   function handleClick(event) {
     const bounds = event.currentTarget.getBoundingClientRect();
     const offset = Math.min(bounds.width, Math.max(0, event.clientX - bounds.left));
-    onChange(Math.min(5, Math.max(0.5, Math.ceil((offset / bounds.width) * 10) / 2)));
+    commitRating(Math.min(5, Math.max(0.5, Math.ceil((offset / bounds.width) * 10) / 2)));
   }
 
   function handleKeyDown(event) {
@@ -136,19 +143,19 @@ function PersonalRating({ value, onChange }) {
 
     if (event.key === 'Home') {
       event.preventDefault();
-      onChange(0);
+      commitRating(0);
       return;
     }
 
     if (event.key === 'End') {
       event.preventDefault();
-      onChange(5);
+      commitRating(5);
       return;
     }
 
     if (increments[event.key]) {
       event.preventDefault();
-      onChange(normalizePlaceRating(rating + increments[event.key]));
+      commitRating(rating + increments[event.key]);
     }
   }
 
@@ -281,6 +288,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias, 
         if (!ignore && requestId === locationRequestIdRef.current) setLocationOptions(results);
       } catch (error) {
         if (!ignore && requestId === locationRequestIdRef.current) {
+          captureDiagnostic('search.form.suggestions', error);
           setLocationOptions([]);
           setLocationError(error.message);
         }
@@ -328,7 +336,10 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias, 
         providerType: resolved.providerType || resolved.type || '',
       }));
     } catch (error) {
-      if (requestId === locationRequestIdRef.current) setLocationError(error.message);
+      if (requestId === locationRequestIdRef.current) {
+        captureDiagnostic('search.form.resolve', error);
+        setLocationError(error.message);
+      }
     } finally {
       if (requestId === locationRequestIdRef.current) setLocationLoading(false);
     }

@@ -42,6 +42,12 @@ La aceptación funcional y visual se hace primero en iPhone Safari y en la PWA i
 
 Mientras estés en la URL local, puedes usar la búsqueda para mover el mapa y fijar una zona como referencia de cercanía.
 
+## Diagnóstico en iPhone
+
+Producción incluye Vercel Web Analytics y Speed Insights para medir rendimiento real sin cookies. Rumbo también conserva localmente, durante un máximo de siete días, hasta 40 errores técnicos y las últimas 30 interacciones críticas de 24 horas. No guarda nombres, direcciones ni enlaces de lugares en este informe.
+
+Desde el menú lateral puedes pulsar **Compartir diagnóstico**. En iPhone se abre la hoja de compartir con un JSON que permite revisar toques del mapa, rating, GPS, sincronización e importación de enlaces. El informe permanece en el dispositivo hasta compartirlo o hasta que caduque.
+
 ## Google Maps y Places
 
 El mapa y ambos buscadores usan Google Maps Platform. No existen lugares concretos ni coordenadas introducidos manualmente en el código.

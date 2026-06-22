@@ -13,6 +13,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../lib/firebase';
+import { captureDiagnostic } from '../lib/diagnostics';
 import { useLocalCollection } from './useLocalCollection';
 
 function serializeDoc(document) {
@@ -79,6 +80,7 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
         }
       },
       (error) => {
+        captureDiagnostic('sync.snapshot', error, { collection: collectionName });
         setRemoteLoading(false);
         setSyncError(error.message || 'No se han podido sincronizar los datos.');
       },
@@ -98,7 +100,10 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
         updatedAt: serverTimestamp(),
       };
       setPendingWrites(true);
-      void setDoc(created, payload).catch((error) => setSyncError(error.message || 'No se ha podido guardar el cambio.'));
+      void setDoc(created, payload).catch((error) => {
+        captureDiagnostic('sync.create', error, { collection: collectionName });
+        setSyncError(error.message || 'No se ha podido guardar el cambio.');
+      });
       return { id: created.id, ...item };
     },
     [collectionName, local, normalizeItem, user],
@@ -110,9 +115,10 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
       const ref = doc(db, 'users', user.uid, collectionName, id);
       const payload = normalizeItem(patch);
       setPendingWrites(true);
-      void updateDoc(ref, { ...payload, updatedAt: serverTimestamp() }).catch((error) =>
-        setSyncError(error.message || 'No se ha podido guardar el cambio.'),
-      );
+      void updateDoc(ref, { ...payload, updatedAt: serverTimestamp() }).catch((error) => {
+        captureDiagnostic('sync.update', error, { collection: collectionName });
+        setSyncError(error.message || 'No se ha podido guardar el cambio.');
+      });
       return { id, ...payload };
     },
     [collectionName, local, normalizeItem, user],
@@ -123,7 +129,10 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
       if (!isFirebaseConfigured || !db || !user || user.isLocal) return local.deleteItem(id);
       const ref = doc(db, 'users', user.uid, collectionName, id);
       setPendingWrites(true);
-      void deleteDoc(ref).catch((error) => setSyncError(error.message || 'No se ha podido eliminar el lugar.'));
+      void deleteDoc(ref).catch((error) => {
+        captureDiagnostic('sync.delete', error, { collection: collectionName });
+        setSyncError(error.message || 'No se ha podido eliminar el lugar.');
+      });
       return undefined;
     },
     [collectionName, local, user],
@@ -135,6 +144,7 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
     try {
       await enableNetwork(db);
     } catch (error) {
+      captureDiagnostic('sync.retry', error);
       setSyncError(error.message || 'No se ha podido reanudar la sincronización.');
     }
   }, []);

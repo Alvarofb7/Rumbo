@@ -651,7 +651,10 @@ export async function buildImportedPlace(rawUrl) {
 }
 
 export default async function handler(request, response) {
+  const startedAt = Date.now();
+  const requestId = request.headers?.['x-vercel-id'] || '';
   if (request.method !== 'POST') {
+    console.warn(JSON.stringify({ level: 'warning', message: 'import_method_rejected', requestId, method: request.method }));
     response.setHeader('Allow', 'POST');
     response.status(405).json({ error: 'Método no permitido.' });
     return;
@@ -659,9 +662,29 @@ export default async function handler(request, response) {
 
   try {
     const body = typeof request.body === 'string' ? JSON.parse(request.body || '{}') : request.body;
+    console.log(JSON.stringify({ level: 'info', message: 'import_started', requestId }));
     const place = await buildImportedPlace(body?.url || '');
+    console.log(
+      JSON.stringify({
+        level: 'info',
+        message: 'import_completed',
+        requestId,
+        durationMs: Date.now() - startedAt,
+        sourceType: place.sourceType,
+        resolved: Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lng)),
+      }),
+    );
     response.status(200).json(place);
   } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        message: 'import_failed',
+        requestId,
+        durationMs: Date.now() - startedAt,
+        error: error.message || 'Unknown import error',
+      }),
+    );
     response.status(400).json({ error: error.message || 'No se pudo importar el enlace.' });
   }
 }

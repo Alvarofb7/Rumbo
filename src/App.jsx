@@ -1,5 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Box, CircularProgress, CssBaseline, ThemeProvider } from '@mui/material';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { theme } from './theme';
 import { useAuth } from './context/AuthContext';
 
@@ -21,6 +23,8 @@ export default function App() {
       >
         {loading || !user ? <LoginScreen loading={loading} /> : <MainApp />}
       </Suspense>
+      <Analytics />
+      <SpeedInsights />
     </ThemeProvider>
   );
 }

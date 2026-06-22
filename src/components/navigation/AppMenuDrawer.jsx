@@ -15,6 +15,7 @@ import {
 import CloudDoneIcon from '@mui/icons-material/CloudDone';
 import CloudOffIcon from '@mui/icons-material/CloudOff';
 import CloudSyncIcon from '@mui/icons-material/CloudSync';
+import BugReportIcon from '@mui/icons-material/BugReport';
 import DownloadIcon from '@mui/icons-material/Download';
 import AddLinkIcon from '@mui/icons-material/AddLink';
 import InboxIcon from '@mui/icons-material/Inbox';
@@ -22,6 +23,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import StorageIcon from '@mui/icons-material/Storage';
 import SyncIcon from '@mui/icons-material/Sync';
 import { useAuth } from '../../context/AuthContext';
+import { captureDiagnostic, getDiagnostics, shareDiagnostics } from '../../lib/diagnostics';
 
 export default function AppMenuDrawer({
   stats,
@@ -34,6 +36,7 @@ export default function AppMenuDrawer({
   onRetrySync,
 }) {
   const { user, signOut } = useAuth();
+  const diagnosticCount = getDiagnostics().reduce((total, incident) => total + Number(incident.count || 1), 0);
 
   function exportData() {
     const payload = {
@@ -57,6 +60,14 @@ export default function AppMenuDrawer({
   function runAndClose(action) {
     action();
     onClose();
+  }
+
+  async function handleShareDiagnostics() {
+    try {
+      await shareDiagnostics();
+    } catch (error) {
+      if (error?.name !== 'AbortError') captureDiagnostic('diagnostics.share', error);
+    }
   }
 
   const syncMeta = {
@@ -128,6 +139,9 @@ export default function AppMenuDrawer({
 
           <Button variant="outlined" startIcon={<DownloadIcon />} onClick={exportData}>
             Exportar JSON
+          </Button>
+          <Button variant="outlined" startIcon={<BugReportIcon />} onClick={() => void handleShareDiagnostics()}>
+            Compartir diagnóstico{diagnosticCount ? ` (${diagnosticCount})` : ''}
           </Button>
           <Button
             color="error"
