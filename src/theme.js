@@ -65,6 +65,14 @@ export const theme = createTheme({
         },
       },
     },
+    MuiIconButton: {
+      styleOverrides: {
+        root: {
+          minWidth: 44,
+          minHeight: 44,
+        },
+      },
+    },
     MuiPaper: {
       styleOverrides: {
         rounded: {

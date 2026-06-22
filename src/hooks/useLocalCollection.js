@@ -61,5 +61,13 @@ export function useLocalCollection(storageKey, initialItems = [], normalizeItem 
     [items, persist],
   );
 
-  return { items, loading, addItem, updateItem, deleteItem };
+  return {
+    items,
+    loading,
+    addItem,
+    updateItem,
+    deleteItem,
+    retrySync: async () => undefined,
+    syncState: { status: 'local', pending: false, offline: false, error: '' },
+  };
 }

@@ -75,6 +75,44 @@ const compactFieldSx = {
   },
 };
 
+const draftMaxAge = 7 * 24 * 60 * 60 * 1000;
+
+function removeStoredDraft(storageKey) {
+  if (!storageKey) return;
+  try {
+    localStorage.removeItem(storageKey);
+  } catch {
+    return;
+  }
+}
+
+function readStoredDraft(storageKey) {
+  if (!storageKey) return null;
+
+  try {
+    const stored = JSON.parse(localStorage.getItem(storageKey));
+    if (!stored?.savedAt || Date.now() - stored.savedAt > draftMaxAge) {
+      removeStoredDraft(storageKey);
+      return null;
+    }
+    return stored;
+  } catch {
+    removeStoredDraft(storageKey);
+    return null;
+  }
+}
+
+function hasDraftContent(draft, locationQuery) {
+  return Boolean(
+    locationQuery.trim() ||
+      draft.name?.trim() ||
+      draft.address?.trim() ||
+      draft.tags?.length ||
+      draft.rating ||
+      draft.sourceUrl?.trim(),
+  );
+}
+
 function hasUsableCoordinates(lat, lng) {
   return lat !== '' && lng !== '' && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
 }
@@ -152,7 +190,7 @@ function PersonalRating({ value, onChange }) {
   );
 }
 
-export default function PlaceDialog({ open, place, onClose, onSave, searchBias }) {
+export default function PlaceDialog({ open, place, onClose, onSave, searchBias, draftStorageKey }) {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const [draft, setDraft] = useState(blankPlace);
@@ -161,6 +199,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState('');
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
   const fixedLocationQueryRef = useRef('');
   const locationRequestIdRef = useRef(0);
   const searchSessionRef = useRef(createPlaceSearchSession());
@@ -169,9 +208,16 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
     if (open) {
       locationRequestIdRef.current += 1;
       resetPlaceSearchSession(searchSessionRef.current);
-      const nextDraft = { ...blankPlace, ...place };
+      let nextDraft = { ...blankPlace, ...place };
+      let restoredQuery = '';
+      const canRestoreDraft = !nextDraft.id && !nextDraft.providerPlaceId && !nextDraft.name && !nextDraft.address;
+      const storedDraft = canRestoreDraft ? readStoredDraft(draftStorageKey) : null;
+      if (storedDraft?.draft) {
+        nextDraft = { ...blankPlace, ...storedDraft.draft };
+        restoredQuery = storedDraft.locationQuery || '';
+      }
       nextDraft.rating = normalizePlaceRating(nextDraft.rating);
-      const initialLocationQuery = nextDraft.address || nextDraft.name || '';
+      const initialLocationQuery = restoredQuery || nextDraft.address || nextDraft.name || '';
       const initialHasCoordinates = hasUsableCoordinates(nextDraft.lat, nextDraft.lng);
 
       fixedLocationQueryRef.current = initialHasCoordinates ? initialLocationQuery.trim() : '';
@@ -181,8 +227,26 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       setLocationLoading(false);
       setLocationError('');
       setDetailsOpen(false);
+      setDraftRestored(Boolean(storedDraft));
     }
-  }, [open, place]);
+  }, [draftStorageKey, open, place]);
+
+  useEffect(() => {
+    if (!open || !draftStorageKey || draft.id) return;
+    if (!hasDraftContent(draft, locationQuery)) {
+      removeStoredDraft(draftStorageKey);
+      return;
+    }
+
+    try {
+      localStorage.setItem(
+        draftStorageKey,
+        JSON.stringify({ draft, locationQuery, savedAt: Date.now() }),
+      );
+    } catch {
+      return;
+    }
+  }, [draft, draftStorageKey, locationQuery, open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -270,11 +334,11 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
     }
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!draft.name.trim()) return;
     const category = inferPlaceCategory(draft);
     const sourceUrl = draft.sourceUrl.trim();
-    onSave({
+    const saved = await onSave({
       ...draft,
       name: draft.name.trim(),
       address: draft.address.trim(),
@@ -286,6 +350,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       sourceUrl,
       resolvedUrl: draft.resolvedUrl || '',
     });
+    if (saved !== false) removeStoredDraft(draftStorageKey);
   }
 
   return (
@@ -312,6 +377,11 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
         }}
       >
         <Stack spacing={1.6} sx={{ pt: 1 }}>
+          {draftRestored && (
+            <Alert severity="info" onClose={() => setDraftRestored(false)}>
+              He recuperado el borrador que dejaste a medias.
+            </Alert>
+          )}
           <Paper variant="outlined" sx={formCardSx}>
             <Stack spacing={1.2}>
               <Stack direction="row" spacing={1} alignItems="center">

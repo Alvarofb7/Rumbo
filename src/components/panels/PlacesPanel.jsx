@@ -76,13 +76,8 @@ export default function PlacesPanel({
               <Box
                 key={place.id}
                 ref={selected ? selectedPlaceRef : null}
-                role="button"
-                tabIndex={0}
-                onClick={() => onSelect(place)}
-                onKeyDown={(event) => event.key === 'Enter' && onSelect(place)}
                 sx={{
                   py: 1.4,
-                  cursor: 'pointer',
                   outline: 0,
                   bgcolor: selected ? 'rgba(0,97,111,0.08)' : 'transparent',
                   border: selected ? '1px solid rgba(0,97,111,0.24)' : '1px solid transparent',
@@ -92,54 +87,76 @@ export default function PlacesPanel({
                   transition: 'background-color 160ms ease, border-color 160ms ease',
                 }}
               >
-                <Stack direction="row" spacing={1.2} alignItems="flex-start">
-                  <Box
+                <Stack spacing={0.5}>
+                  <Stack
+                    component="button"
+                    type="button"
+                    direction="row"
+                    spacing={1.2}
+                    alignItems="flex-start"
+                    onClick={() => onSelect(place)}
                     sx={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 2,
-                      bgcolor: 'rgba(0,97,111,0.08)',
-                      color: 'primary.main',
-                      display: 'grid',
-                      placeItems: 'center',
+                      p: 0,
+                      border: 0,
+                      bgcolor: 'transparent',
+                      color: 'inherit',
+                      font: 'inherit',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      width: 1,
+                      '&:focus-visible': {
+                        outline: '2px solid',
+                        outlineColor: 'primary.main',
+                        outlineOffset: 2,
+                      },
                     }}
                   >
-                    <TypeIcon category={place.category} />
-                  </Box>
-                  <Stack spacing={0.55} sx={{ minWidth: 0, flex: 1 }}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography variant="h4" noWrap sx={{ flex: 1 }}>
-                        {place.name}
+                    <Box
+                      sx={{
+                        width: 48,
+                        height: 48,
+                        flex: '0 0 auto',
+                        borderRadius: 2,
+                        bgcolor: 'rgba(0,97,111,0.08)',
+                        color: 'primary.main',
+                        display: 'grid',
+                        placeItems: 'center',
+                      }}
+                    >
+                      <TypeIcon category={place.category} />
+                    </Box>
+                    <Stack spacing={0.55} sx={{ minWidth: 0, flex: 1 }}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="h4" noWrap sx={{ flex: 1 }}>
+                          {place.name}
+                        </Typography>
+                        <Typography variant="body2" color="success.main" fontWeight={700}>
+                          {formatDistance(place.distance)}
+                        </Typography>
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary" noWrap>
+                        {place.zone || place.address}
                       </Typography>
-                      <Typography variant="body2" color="success.main" fontWeight={700}>
-                        {formatDistance(place.distance)}
-                      </Typography>
-                    </Stack>
-                    <Typography variant="body2" color="text.secondary" noWrap>
-                      {place.zone || place.address}
-                    </Typography>
-                    {(place.tags || []).length > 0 && <TagList tags={place.tags} limit={2} />}
-                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                      <RatingText rating={place.rating} />
-                      <CategoryBadge category={place.category} />
-                      <Chip size="small" label={statusMeta.label} sx={{ color: statusMeta.color, bgcolor: `${statusMeta.color}14` }} />
+                      {(place.tags || []).length > 0 && <TagList tags={place.tags} limit={2} />}
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <RatingText rating={place.rating} />
+                        <CategoryBadge category={place.category} />
+                        <Chip size="small" label={statusMeta.label} sx={{ color: statusMeta.color, bgcolor: `${statusMeta.color}14` }} />
+                      </Stack>
                     </Stack>
                   </Stack>
-                  <Stack spacing={0.5}>
+                  <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                     <IconButton
                       size="small"
                       aria-label={`Ir a ${place.name}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onDirections?.(place);
-                      }}
+                      onClick={() => onDirections?.(place)}
                     >
                       <NearMeIcon fontSize="small" />
                     </IconButton>
-                    <IconButton size="small" aria-label={`Editar ${place.name}`} onClick={(event) => { event.stopPropagation(); onEdit(place); }}>
+                    <IconButton size="small" aria-label={`Editar ${place.name}`} onClick={() => onEdit(place)}>
                       <EditIcon fontSize="small" />
                     </IconButton>
-                    <IconButton size="small" aria-label={`Eliminar ${place.name}`} onClick={(event) => { event.stopPropagation(); onDelete(place.id); }}>
+                    <IconButton size="small" aria-label={`Eliminar ${place.name}`} onClick={() => onDelete(place.id)}>
                       <DeleteOutlineIcon fontSize="small" />
                     </IconButton>
                   </Stack>

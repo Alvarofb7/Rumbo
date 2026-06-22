@@ -76,7 +76,7 @@ export default function GooglePlaceCard({ place, loading, onClose, onSave }) {
               </Button>
             )}
             <Button size="small" variant="contained" startIcon={<SaveOutlinedIcon />} onClick={() => onSave(place)} sx={{ flex: 1 }}>
-              Guardar lugar
+              Guardar rápido
             </Button>
           </Stack>
         </Stack>

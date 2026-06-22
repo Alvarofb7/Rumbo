@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  addDoc,
   collection,
   deleteField,
   deleteDoc,
   doc,
+  enableNetwork,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../lib/firebase';
@@ -33,6 +34,20 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
   const local = useLocalCollection(`rumbo.${safeUid}.${collectionName}`, initialItems, normalizeItem);
   const [remoteItems, setRemoteItems] = useState([]);
   const [remoteLoading, setRemoteLoading] = useState(Boolean(isFirebaseConfigured && user && !user.isLocal));
+  const [networkOnline, setNetworkOnline] = useState(() => navigator.onLine);
+  const [pendingWrites, setPendingWrites] = useState(false);
+  const [syncError, setSyncError] = useState('');
+
+  useEffect(() => {
+    const handleOnline = () => setNetworkOnline(true);
+    const handleOffline = () => setNetworkOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isFirebaseConfigured || !db || !user || user.isLocal) return undefined;
@@ -43,9 +58,12 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
 
     return onSnapshot(
       ordered,
+      { includeMetadataChanges: true },
       (snapshot) => {
         setRemoteItems(snapshot.docs.map((document) => normalizeItem(serializeDoc(document))));
         setRemoteLoading(false);
+        setPendingWrites(snapshot.metadata.hasPendingWrites);
+        setSyncError('');
 
         if (getMigration) {
           const migrations = snapshot.docs.flatMap((document) => {
@@ -60,7 +78,10 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
           if (migrations.length) void Promise.allSettled(migrations);
         }
       },
-      () => setRemoteLoading(false),
+      (error) => {
+        setRemoteLoading(false);
+        setSyncError(error.message || 'No se han podido sincronizar los datos.');
+      },
     );
   }, [collectionName, getMigration, normalizeItem, user]);
 
@@ -68,12 +89,16 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
     async (item) => {
       if (!isFirebaseConfigured || !db || !user || user.isLocal) return local.addItem(item);
       const ref = collection(db, 'users', user.uid, collectionName);
+      const created = item.id ? doc(ref, item.id) : doc(ref);
+      const data = { ...normalizeItem(item) };
+      delete data.id;
       const payload = {
-        ...normalizeItem(item),
-        createdAt: serverTimestamp(),
+        ...data,
+        createdAt: item.createdAt || serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
-      const created = await addDoc(ref, payload);
+      setPendingWrites(true);
+      void setDoc(created, payload).catch((error) => setSyncError(error.message || 'No se ha podido guardar el cambio.'));
       return { id: created.id, ...item };
     },
     [collectionName, local, normalizeItem, user],
@@ -84,7 +109,10 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
       if (!isFirebaseConfigured || !db || !user || user.isLocal) return local.updateItem(id, patch);
       const ref = doc(db, 'users', user.uid, collectionName, id);
       const payload = normalizeItem(patch);
-      await updateDoc(ref, { ...payload, updatedAt: serverTimestamp() });
+      setPendingWrites(true);
+      void updateDoc(ref, { ...payload, updatedAt: serverTimestamp() }).catch((error) =>
+        setSyncError(error.message || 'No se ha podido guardar el cambio.'),
+      );
       return { id, ...payload };
     },
     [collectionName, local, normalizeItem, user],
@@ -94,10 +122,22 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
     async (id) => {
       if (!isFirebaseConfigured || !db || !user || user.isLocal) return local.deleteItem(id);
       const ref = doc(db, 'users', user.uid, collectionName, id);
-      return deleteDoc(ref);
+      setPendingWrites(true);
+      void deleteDoc(ref).catch((error) => setSyncError(error.message || 'No se ha podido eliminar el lugar.'));
+      return undefined;
     },
     [collectionName, local, user],
   );
+
+  const retrySync = useCallback(async () => {
+    if (!db) return;
+    setSyncError('');
+    try {
+      await enableNetwork(db);
+    } catch (error) {
+      setSyncError(error.message || 'No se ha podido reanudar la sincronización.');
+    }
+  }, []);
 
   if (!isFirebaseConfigured || !db || !user || user.isLocal) return local;
 
@@ -107,5 +147,12 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
     addItem,
     updateItem,
     deleteItem,
+    retrySync,
+    syncState: {
+      status: syncError ? 'error' : !networkOnline ? 'offline' : pendingWrites ? 'pending' : 'synced',
+      pending: pendingWrites,
+      offline: !networkOnline,
+      error: syncError,
+    },
   };
 }

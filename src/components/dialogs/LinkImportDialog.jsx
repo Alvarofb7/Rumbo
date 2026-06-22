@@ -11,8 +11,10 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
 import LinkIcon from '@mui/icons-material/Link';
+import { useTheme } from '@mui/material/styles';
 
 function looksLikeUrl(value) {
   const trimmed = value.trim();
@@ -22,6 +24,8 @@ function looksLikeUrl(value) {
 }
 
 export default function LinkImportDialog({ open, onClose, onImport }) {
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -60,7 +64,7 @@ export default function LinkImportDialog({ open, onClose, onImport }) {
   }
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
       <DialogTitle>Importar enlace</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ pt: 1 }}>
@@ -86,7 +90,7 @@ export default function LinkImportDialog({ open, onClose, onImport }) {
           </Box>
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ px: 3, py: 2 }}>
+      <DialogActions sx={{ px: 3, py: 2, pb: `calc(16px + env(safe-area-inset-bottom))` }}>
         <Button onClick={onClose}>Cancelar</Button>
         <Button variant="contained" onClick={handleSubmit} disabled={!query.trim() || loading}>
           Añadir a revisión

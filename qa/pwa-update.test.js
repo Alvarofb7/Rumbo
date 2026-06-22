@@ -7,14 +7,15 @@ describe('PWA update strategy', () => {
 
     expect(serviceWorker).toContain("url.pathname.startsWith('/api/')");
     expect(serviceWorker).toContain("fetch(event.request, { cache: 'no-store' })");
-    expect(serviceWorker).not.toContain('rumbo-shell-v1');
+    expect(serviceWorker).toContain('rumbo-shell-v3');
+    expect(serviceWorker).not.toContain('skipWaiting');
   });
 
-  it('forces a fresh worker check and reloads controlled clients', () => {
+  it('checks for fresh workers without interrupting an open iPhone session', () => {
     const main = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 
     expect(main).toContain("updateViaCache: 'none'");
-    expect(main).toContain("addEventListener('controllerchange'");
-    expect(main).toContain('window.location.reload()');
+    expect(main).not.toContain("addEventListener('controllerchange'");
+    expect(main).not.toContain('window.location.reload()');
   });
 });

@@ -9,14 +9,6 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import './styles/global.css';
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  let reloadingForUpdate = false;
-
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloadingForUpdate) return;
-    reloadingForUpdate = true;
-    window.location.reload();
-  });
-
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/sw.js', { updateViaCache: 'none' })

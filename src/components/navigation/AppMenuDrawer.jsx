@@ -13,19 +13,25 @@ import {
   Typography,
 } from '@mui/material';
 import CloudDoneIcon from '@mui/icons-material/CloudDone';
+import CloudOffIcon from '@mui/icons-material/CloudOff';
+import CloudSyncIcon from '@mui/icons-material/CloudSync';
 import DownloadIcon from '@mui/icons-material/Download';
+import AddLinkIcon from '@mui/icons-material/AddLink';
 import InboxIcon from '@mui/icons-material/Inbox';
 import LogoutIcon from '@mui/icons-material/Logout';
 import StorageIcon from '@mui/icons-material/Storage';
+import SyncIcon from '@mui/icons-material/Sync';
 import { useAuth } from '../../context/AuthContext';
 
 export default function AppMenuDrawer({
   stats,
   places,
   inbox,
-  firebaseReady,
+  syncState,
   onClose,
+  onImportLink,
   onOpenReview,
+  onRetrySync,
 }) {
   const { user, signOut } = useAuth();
 
@@ -53,6 +59,14 @@ export default function AppMenuDrawer({
     onClose();
   }
 
+  const syncMeta = {
+    synced: { label: 'Sincronizado', description: 'Todos los cambios están guardados.', icon: <CloudDoneIcon color="success" /> },
+    pending: { label: 'Guardando…', description: 'Hay cambios pendientes de subir.', icon: <CloudSyncIcon color="warning" /> },
+    offline: { label: 'Sin conexión', description: 'Los cambios se subirán cuando vuelva la red.', icon: <CloudOffIcon color="warning" /> },
+    error: { label: 'Error de sincronización', description: syncState.error || 'Toca para volver a intentarlo.', icon: <CloudOffIcon color="error" /> },
+    local: { label: 'Modo local', description: 'Los datos se guardan en este dispositivo.', icon: <StorageIcon color="warning" /> },
+  }[syncState.status];
+
   return (
     <Box sx={{ width: 332, maxWidth: '100vw', p: 2, pb: `calc(18px + env(safe-area-inset-bottom))` }}>
       <Stack spacing={2.2}>
@@ -77,6 +91,12 @@ export default function AppMenuDrawer({
         <Divider />
 
         <List disablePadding sx={{ display: 'grid', gap: 0.75 }}>
+          <ListItemButton onClick={() => runAndClose(onImportLink)} sx={{ borderRadius: 3, minHeight: 52 }}>
+            <ListItemIcon sx={{ minWidth: 40 }}>
+              <AddLinkIcon color="primary" />
+            </ListItemIcon>
+            <ListItemText primary="Importar enlace" secondary="Maps, Tripadvisor o Instagram" />
+          </ListItemButton>
           <ListItemButton onClick={() => runAndClose(onOpenReview)} sx={{ borderRadius: 3 }}>
             <ListItemIcon sx={{ minWidth: 40 }}>
               <Badge badgeContent={inbox.length} color="primary">
@@ -91,14 +111,20 @@ export default function AppMenuDrawer({
 
         <Stack spacing={1.2}>
           <Stack direction="row" spacing={1.2} alignItems="center">
-            {firebaseReady ? <CloudDoneIcon color="success" /> : <StorageIcon color="warning" />}
+            {syncMeta.icon}
             <Box>
-              <Typography fontWeight={850}>{firebaseReady ? 'Sincronizado' : 'Modo local'}</Typography>
+              <Typography fontWeight={850}>{syncMeta.label}</Typography>
               <Typography variant="body2" color="text.secondary">
-                {firebaseReady ? 'Tus datos viven por usuario en Firestore.' : 'Firebase no está activo en este entorno.'}
+                {syncMeta.description}
               </Typography>
             </Box>
           </Stack>
+
+          {['pending', 'offline', 'error'].includes(syncState.status) && (
+            <Button variant="outlined" startIcon={<SyncIcon />} onClick={onRetrySync}>
+              Reintentar sincronización
+            </Button>
+          )}
 
           <Button variant="outlined" startIcon={<DownloadIcon />} onClick={exportData}>
             Exportar JSON

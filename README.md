@@ -25,13 +25,15 @@ Abre `http://localhost:5173`.
 2. Activa Authentication con Email/Password y Google.
 3. Crea Firestore Database.
 4. Copia los datos de la web app en `.env`.
-5. Publica las reglas de `firestore.rules` y `storage.rules`.
+5. Publica las reglas de `firestore.rules`.
 
 Mientras `.env` no tenga claves de Firebase, la app funciona en modo local para que puedas probar diseño, CRUD, filtros y bandeja.
 
 ## iPhone y ubicación real
 
 Safari solo entrega ubicación precisa a webs en contexto seguro. En local, `localhost` funciona en el Mac, pero desde el iPhone entrando por `http://192.168...` puede bloquear GPS. Para probar ubicación real en el iPhone:
+
+La aceptación funcional y visual se hace primero en iPhone Safari y en la PWA instalada. El escritorio sirve como comprobación secundaria, no como referencia principal.
 
 1. Despliega la app en un dominio HTTPS, por ejemplo Firebase Hosting, Vercel o Netlify.
 2. Abre esa URL HTTPS en Safari.
@@ -51,7 +53,7 @@ El mapa y ambos buscadores usan Google Maps Platform. No existen lugares concret
 5. Añádela como `VITE_GOOGLE_MAPS_API_KEY` en Vercel.
 6. Opcionalmente crea un Map ID web y añádelo como `VITE_GOOGLE_MAPS_MAP_ID` para controlar el estilo desde Google Cloud.
 
-El buscador superior prioriza el área visible sin impedir viajar a otra ciudad. El formulario de creación restringe los resultados al mapa visible para evitar locales homónimos lejanos.
+Ambos buscadores usan el área visible como preferencia, nunca como límite. Puedes encontrar y seleccionar lugares de cualquier ciudad sin mover antes el mapa.
 
 ## Importación de lugares
 

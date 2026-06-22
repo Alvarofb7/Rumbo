@@ -1,11 +1,10 @@
-const CACHE_NAME = 'rumbo-shell-v2';
+const CACHE_NAME = 'rumbo-shell-v3';
 const OFFLINE_URL = '/';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.add(new Request(OFFLINE_URL, { cache: 'reload' }))),
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {

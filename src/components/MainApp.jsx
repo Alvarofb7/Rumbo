@@ -147,10 +147,10 @@ function DataDrawer({ open, title, subtitle, isDesktop, onClose, children, fitCo
 }
 
 export default function MainApp() {
-  const { user, firebaseReady } = useAuth();
+  const { user } = useAuth();
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
-  const { position, status: locationStatus, error: locationError, setManualPosition } = useUserLocation();
+  const { position, status: locationStatus, error: locationError, setManualPosition, requestLivePosition } = useUserLocation();
   const placesStore = useUserCollection(user, 'places', demoPlaces, {
     normalizeItem: sanitizePlaceRecord,
     getMigration: getPlaceRecordMigration,
@@ -178,6 +178,7 @@ export default function MainApp() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [googlePlacePreview, setGooglePlacePreview] = useState(null);
   const [googlePlaceLoading, setGooglePlaceLoading] = useState(false);
+  const [deletedPlace, setDeletedPlace] = useState(null);
   const [toast, setToast] = useState('');
   const mapSearchSessionRef = useRef(createPlaceSearchSession());
   const googlePlaceRequestRef = useRef(0);
@@ -211,11 +212,31 @@ export default function MainApp() {
       favorites: places.filter((place) => place.status === 'favorite').length,
     };
   }, [inbox.length, places]);
+  const syncState = useMemo(() => {
+    const states = [placesStore.syncState, inboxStore.syncState];
+    return (
+      states.find((state) => state.status === 'error') ||
+      states.find((state) => state.status === 'offline') ||
+      states.find((state) => state.status === 'pending') ||
+      states.find((state) => state.status === 'synced') ||
+      states[0]
+    );
+  }, [inboxStore.syncState, placesStore.syncState]);
+  const syncMeta = {
+    synced: { label: 'Sincronizado', color: 'success.main' },
+    pending: { label: 'Guardando cambios', color: 'warning.main' },
+    offline: { label: 'Sin conexión; cambios en cola', color: 'warning.main' },
+    error: { label: 'Error de sincronización', color: 'error.main' },
+    local: { label: 'Modo local', color: 'warning.main' },
+  }[syncState.status];
 
   useEffect(() => {
     if (!toast) return undefined;
 
-    const timeoutId = window.setTimeout(() => setToast(''), 3500);
+    const timeoutId = window.setTimeout(() => {
+      setToast('');
+      setDeletedPlace(null);
+    }, 5000);
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
 
@@ -392,9 +413,31 @@ export default function MainApp() {
   }
 
   async function handleDeletePlace(placeId) {
+    const place = places.find((candidate) => candidate.id === placeId);
+    if (!place) return;
     await placesStore.deleteItem(placeId);
     if (selectedPlaceId === placeId) setSelectedPlaceId(null);
+    setDeletedPlace(place);
     setToast('Lugar eliminado.');
+  }
+
+  async function undoDeletePlace() {
+    if (!deletedPlace) return;
+    const restored = await placesStore.addItem(deletedPlace);
+    setDeletedPlace(null);
+    setSelectedPlaceId(restored.id);
+    setToast('Lugar recuperado.');
+  }
+
+  async function handleQuickSaveGooglePlace(place) {
+    const saved = await handleSavePlace({
+      ...emptyPlace,
+      ...place,
+      id: '',
+      status: 'wishlist',
+      sourceType: 'google',
+    });
+    if (saved) closeGooglePlacePreview();
   }
 
   async function handleImportLink(url) {
@@ -545,12 +588,18 @@ export default function MainApp() {
     if (!isDesktop) setPlacesOpen(false);
   }
 
-  function centerOnUser() {
+  async function centerOnUser() {
     googlePlaceRequestRef.current += 1;
     setGooglePlacePreview(null);
     setGooglePlaceLoading(false);
     setSelectedPlaceId(null);
-    setMapCenter({ lat: position.lat, lng: position.lng });
+    const livePosition = await requestLivePosition();
+    const nextPosition = livePosition || position;
+    setMapCenter({ lat: nextPosition.lat, lng: nextPosition.lng });
+  }
+
+  async function retrySync() {
+    await Promise.all([placesStore.retrySync(), inboxStore.retrySync()]);
   }
 
   function closeGooglePlacePreview() {
@@ -706,8 +755,12 @@ export default function MainApp() {
                   )
                 )}
               </Box>
-              <Tooltip title={firebaseReady ? 'Sincronizado' : 'Modo local'}>
-                <Box sx={{ width: 8, height: 8, mr: 1.2, borderRadius: 99, bgcolor: firebaseReady ? 'success.main' : 'warning.main' }} />
+              <Tooltip title={syncMeta.label}>
+                <Box
+                  role="status"
+                  aria-label={syncMeta.label}
+                  sx={{ width: 8, height: 8, mr: 1.2, borderRadius: 99, bgcolor: syncMeta.color }}
+                />
               </Tooltip>
             </Paper>
 
@@ -769,7 +822,7 @@ export default function MainApp() {
         <Tooltip title={locationStatus === 'ready' ? 'Mi ubicación' : 'Referencia de cercanía'}>
           <IconButton
             aria-label="Ir a mi ubicación"
-            onClick={centerOnUser}
+            onClick={() => void centerOnUser()}
             sx={{ bgcolor: 'rgba(255,255,255,0.94)', boxShadow: '0 10px 26px rgba(6,42,48,0.14)', backdropFilter: 'blur(18px)' }}
           >
             <MyLocationIcon />
@@ -846,7 +899,17 @@ export default function MainApp() {
       {toast && (
         <Alert
           severity="success"
-          onClose={() => setToast('')}
+          onClose={() => {
+            setToast('');
+            if (toast === 'Lugar eliminado.') setDeletedPlace(null);
+          }}
+          action={
+            toast === 'Lugar eliminado.' && deletedPlace ? (
+              <Button color="inherit" size="small" onClick={() => void undoDeletePlace()}>
+                Deshacer
+              </Button>
+            ) : undefined
+          }
           sx={{
             position: 'absolute',
             left: { xs: 12, md: 18 },
@@ -891,7 +954,7 @@ export default function MainApp() {
         place={googlePlacePreview}
         loading={googlePlaceLoading}
         onClose={closeGooglePlacePreview}
-        onSave={(place) => openCreatePlace(place)}
+        onSave={(place) => void handleQuickSaveGooglePlace(place)}
       />
 
       <DataDrawer
@@ -934,9 +997,11 @@ export default function MainApp() {
         place={editingPlace}
         onClose={() => setPlaceDialogOpen(false)}
         searchBias={mapSearchBias}
+        draftStorageKey={`rumbo.${user.uid}.placeDraft`}
         onSave={async (place) => {
           const saved = await handleSavePlace(place);
           if (saved && place.inboxId) await inboxStore.deleteItem(place.inboxId);
+          return saved;
         }}
       />
       <LinkImportDialog
@@ -955,9 +1020,11 @@ export default function MainApp() {
           stats={stats}
           places={places}
           inbox={inbox}
-          firebaseReady={firebaseReady}
+          syncState={syncState}
           onClose={() => setMenuOpen(false)}
+          onImportLink={() => setLinkDialogOpen(true)}
           onOpenReview={openReview}
+          onRetrySync={() => void retrySync()}
         />
       </Drawer>
     </Box>
