@@ -8,17 +8,21 @@ function read(relativePath) {
 describe('iPhone-first safeguards', () => {
   it('keeps the installed PWA portrait-safe without forced reloads', () => {
     expect(read('index.html')).toContain('viewport-fit=cover');
+    expect(read('index.html')).toContain('maximum-scale=1');
+    expect(read('index.html')).toContain('user-scalable=no');
     expect(read('public/manifest.webmanifest')).toContain('"orientation": "portrait"');
     expect(read('src/main.jsx')).not.toContain('window.location.reload()');
   });
 
-  it('preserves drafts and uses full-screen import on small displays', () => {
+  it('preserves drafts and uses a compact import sheet on small displays', () => {
     const placeDialog = read('src/components/dialogs/PlaceDialog.jsx');
     const linkDialog = read('src/components/dialogs/LinkImportDialog.jsx');
 
     expect(placeDialog).toContain('draftMaxAge');
     expect(placeDialog).toContain('draftStorageKey');
-    expect(linkDialog).toContain('fullScreen={fullScreen}');
+    expect(linkDialog).toContain("alignSelf: 'flex-end'");
+    expect(linkDialog).toContain("borderRadius: '24px 24px 0 0'");
+    expect(linkDialog).not.toContain('fullScreen=');
   });
 
   it('keeps passive GPS updates battery-friendly and manual references stable', () => {

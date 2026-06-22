@@ -73,6 +73,15 @@ export const theme = createTheme({
         },
       },
     },
+    MuiInputBase: {
+      styleOverrides: {
+        root: {
+          '@media (max-width:899.95px)': {
+            fontSize: 16,
+          },
+        },
+      },
+    },
     MuiPaper: {
       styleOverrides: {
         rounded: {
