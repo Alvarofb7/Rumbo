@@ -1,9 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Chip,
   Divider,
   IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
   MenuItem,
   Select,
   Stack,
@@ -12,6 +15,7 @@ import {
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditIcon from '@mui/icons-material/Edit';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import NearMeIcon from '@mui/icons-material/NearMe';
 import { formatDistance } from '../../lib/geo';
 import { CategoryBadge, getStatusMeta, RatingText, TagList, TypeIcon } from '../common/placeUtils';
@@ -35,10 +39,28 @@ export default function PlacesPanel({
   onDirections,
 }) {
   const selectedPlaceRef = useRef(null);
+  const [actionsAnchor, setActionsAnchor] = useState(null);
+  const [actionsPlace, setActionsPlace] = useState(null);
 
   useEffect(() => {
     selectedPlaceRef.current?.scrollIntoView({ behavior: 'auto', block: 'nearest' });
   }, [selectedPlace?.id]);
+
+  function openActions(event, place) {
+    setActionsAnchor(event.currentTarget);
+    setActionsPlace(place);
+  }
+
+  function closeActions() {
+    setActionsAnchor(null);
+    setActionsPlace(null);
+  }
+
+  function runAction(action) {
+    const place = actionsPlace;
+    closeActions();
+    if (place) action(place);
+  }
 
   return (
     <Stack spacing={1} sx={{ px: 2, pb: 2 }}>
@@ -87,7 +109,7 @@ export default function PlacesPanel({
                   transition: 'background-color 160ms ease, border-color 160ms ease',
                 }}
               >
-                <Stack spacing={0.5}>
+                <Stack direction="row" spacing={0.4} alignItems="flex-start">
                   <Stack
                     component="button"
                     type="button"
@@ -103,7 +125,8 @@ export default function PlacesPanel({
                       font: 'inherit',
                       textAlign: 'left',
                       cursor: 'pointer',
-                      width: 1,
+                      minWidth: 0,
+                      flex: 1,
                       '&:focus-visible': {
                         outline: '2px solid',
                         outlineColor: 'primary.main',
@@ -145,27 +168,50 @@ export default function PlacesPanel({
                       </Stack>
                     </Stack>
                   </Stack>
-                  <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                    <IconButton
-                      size="small"
-                      aria-label={`Ir a ${place.name}`}
-                      onClick={() => onDirections?.(place)}
-                    >
-                      <NearMeIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" aria-label={`Editar ${place.name}`} onClick={() => onEdit(place)}>
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" aria-label={`Eliminar ${place.name}`} onClick={() => onDelete(place.id)}>
-                      <DeleteOutlineIcon fontSize="small" />
-                    </IconButton>
-                  </Stack>
+                  <IconButton
+                    aria-label={`Acciones para ${place.name}`}
+                    aria-haspopup="menu"
+                    aria-expanded={actionsPlace?.id === place.id ? 'true' : undefined}
+                    onClick={(event) => openActions(event, place)}
+                    sx={{ mt: -0.5, mr: -0.5, color: 'text.secondary' }}
+                  >
+                    <MoreVertIcon />
+                  </IconButton>
                 </Stack>
               </Box>
             );
           })
         )}
       </Stack>
+
+      <Menu
+        anchorEl={actionsAnchor}
+        open={Boolean(actionsAnchor)}
+        onClose={closeActions}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{ paper: { sx: { minWidth: 190, borderRadius: '14px', mt: 0.5 } } }}
+      >
+        <MenuItem onClick={() => runAction((place) => onDirections?.(place))} sx={{ minHeight: 48 }}>
+          <ListItemIcon>
+            <NearMeIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Cómo llegar</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => runAction(onEdit)} sx={{ minHeight: 48 }}>
+          <ListItemIcon>
+            <EditIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Editar</ListItemText>
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={() => runAction((place) => onDelete(place.id))} sx={{ minHeight: 48, color: 'error.main' }}>
+          <ListItemIcon sx={{ color: 'inherit' }}>
+            <DeleteOutlineIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Eliminar</ListItemText>
+        </MenuItem>
+      </Menu>
     </Stack>
   );
 }

@@ -14,17 +14,8 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../lib/firebase';
 import { captureDiagnostic } from '../lib/diagnostics';
+import { serializeFirestoreDocument, withoutDocumentId } from '../lib/firestoreData';
 import { useLocalCollection } from './useLocalCollection';
-
-function serializeDoc(document) {
-  const data = document.data();
-  return {
-    id: document.id,
-    ...data,
-    createdAt: data.createdAt?.toDate?.().toISOString?.() || data.createdAt || new Date().toISOString(),
-    updatedAt: data.updatedAt?.toDate?.().toISOString?.() || data.updatedAt || new Date().toISOString(),
-  };
-}
 
 const identity = (item) => item;
 
@@ -61,7 +52,7 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
       ordered,
       { includeMetadataChanges: true },
       (snapshot) => {
-        setRemoteItems(snapshot.docs.map((document) => normalizeItem(serializeDoc(document))));
+        setRemoteItems(snapshot.docs.map((document) => normalizeItem(serializeFirestoreDocument(document))));
         setRemoteLoading(false);
         setPendingWrites(snapshot.metadata.hasPendingWrites);
         setSyncError('');
@@ -92,8 +83,7 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
       if (!isFirebaseConfigured || !db || !user || user.isLocal) return local.addItem(item);
       const ref = collection(db, 'users', user.uid, collectionName);
       const created = item.id ? doc(ref, item.id) : doc(ref);
-      const data = { ...normalizeItem(item) };
-      delete data.id;
+      const data = withoutDocumentId(normalizeItem(item));
       const payload = {
         ...data,
         createdAt: item.createdAt || serverTimestamp(),
@@ -104,7 +94,7 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
         captureDiagnostic('sync.create', error, { collection: collectionName });
         setSyncError(error.message || 'No se ha podido guardar el cambio.');
       });
-      return { id: created.id, ...item };
+      return { ...item, id: created.id };
     },
     [collectionName, local, normalizeItem, user],
   );
@@ -113,13 +103,13 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
     async (id, patch) => {
       if (!isFirebaseConfigured || !db || !user || user.isLocal) return local.updateItem(id, patch);
       const ref = doc(db, 'users', user.uid, collectionName, id);
-      const payload = normalizeItem(patch);
+      const payload = withoutDocumentId(normalizeItem(patch));
       setPendingWrites(true);
       void updateDoc(ref, { ...payload, updatedAt: serverTimestamp() }).catch((error) => {
         captureDiagnostic('sync.update', error, { collection: collectionName });
         setSyncError(error.message || 'No se ha podido guardar el cambio.');
       });
-      return { id, ...payload };
+      return { ...payload, id };
     },
     [collectionName, local, normalizeItem, user],
   );

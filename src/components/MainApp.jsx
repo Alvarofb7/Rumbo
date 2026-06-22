@@ -421,10 +421,12 @@ export default function MainApp() {
   async function handleDeletePlace(placeId) {
     const place = places.find((candidate) => candidate.id === placeId);
     if (!place) return;
+    recordBreadcrumb('place.delete.started');
     await placesStore.deleteItem(placeId);
     if (selectedPlaceId === placeId) setSelectedPlaceId(null);
     setDeletedPlace(place);
     setToast('Lugar eliminado.');
+    recordBreadcrumb('place.delete.queued');
   }
 
   async function undoDeletePlace() {
@@ -591,6 +593,7 @@ export default function MainApp() {
 
   function selectPlace(place) {
     if (!hasValidCoordinates(place)) return;
+    recordBreadcrumb('place.selected');
     googlePlaceRequestRef.current += 1;
     setGooglePlacePreview(null);
     setGooglePlaceLoading(false);

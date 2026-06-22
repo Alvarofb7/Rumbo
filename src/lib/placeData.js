@@ -105,6 +105,7 @@ export function getPlaceRecordMigration(record = {}) {
 
   if (Object.prototype.hasOwnProperty.call(record, 'imageUrl')) remove.push('imageUrl');
   if (Object.prototype.hasOwnProperty.call(record, 'notes')) remove.push('notes');
+  if (Object.prototype.hasOwnProperty.call(record, 'id')) remove.push('id');
   if (record.category !== sanitized.category) set.category = sanitized.category;
   if (JSON.stringify(record.tags || []) !== JSON.stringify(sanitized.tags)) set.tags = sanitized.tags;
 

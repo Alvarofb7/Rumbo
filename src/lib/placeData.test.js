@@ -36,15 +36,17 @@ describe('place data normalization', () => {
       tags: ['Café', 'Trabajo'],
       imageUrl: 'data:image/jpeg;base64,legacy',
       notes: 'Texto antiguo',
+      id: 'duplicated-legacy-id',
     };
 
     expect(sanitizePlaceRecord(legacy)).toEqual({
+      id: 'duplicated-legacy-id',
       name: 'Café antiguo',
       category: 'cafe',
       tags: ['Trabajo'],
     });
     expect(getPlaceRecordMigration(legacy)).toEqual({
-      remove: ['imageUrl', 'notes'],
+      remove: ['imageUrl', 'notes', 'id'],
       set: { category: 'cafe', tags: ['Trabajo'] },
     });
   });

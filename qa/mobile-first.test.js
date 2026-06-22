@@ -46,4 +46,12 @@ describe('iPhone-first safeguards', () => {
     expect(read('src/main.jsx')).toContain('installGlobalDiagnostics');
     expect(menu).toContain('Compartir diagnóstico');
   });
+
+  it('keeps place actions compact and touch-friendly', () => {
+    const placesPanel = read('src/components/panels/PlacesPanel.jsx');
+    expect(placesPanel).toContain('MoreVertIcon');
+    expect(placesPanel).toContain('Cómo llegar');
+    expect(placesPanel).toContain('minHeight: 48');
+    expect(placesPanel).not.toContain('justifyContent="flex-end"');
+  });
 });
