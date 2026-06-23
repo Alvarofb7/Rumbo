@@ -1016,7 +1016,6 @@ export default function MainApp() {
         place={editingPlace}
         onClose={() => setPlaceDialogOpen(false)}
         searchBias={mapSearchBias}
-        draftStorageKey={`rumbo.${user.uid}.placeDraft`}
         onSave={async (place) => {
           const saved = await handleSavePlace(place);
           if (saved && place.inboxId) await inboxStore.deleteItem(place.inboxId);

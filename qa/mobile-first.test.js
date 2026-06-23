@@ -14,12 +14,12 @@ describe('iPhone-first safeguards', () => {
     expect(read('src/main.jsx')).not.toContain('window.location.reload()');
   });
 
-  it('preserves drafts and uses a compact import sheet on small displays', () => {
+  it('opens clean creation forms and uses a compact import sheet on small displays', () => {
     const placeDialog = read('src/components/dialogs/PlaceDialog.jsx');
     const linkDialog = read('src/components/dialogs/LinkImportDialog.jsx');
 
-    expect(placeDialog).toContain('draftMaxAge');
-    expect(placeDialog).toContain('draftStorageKey');
+    expect(placeDialog).not.toContain('draftStorageKey');
+    expect(placeDialog).not.toContain('localStorage');
     expect(linkDialog).toContain("alignSelf: 'flex-end'");
     expect(linkDialog).toContain("borderRadius: '24px 24px 0 0'");
     expect(linkDialog).not.toContain('fullScreen=');
