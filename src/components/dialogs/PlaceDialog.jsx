@@ -169,6 +169,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
   const [locationError, setLocationError] = useState('');
   const [detailsOpen, setDetailsOpen] = useState(false);
   const fixedLocationQueryRef = useRef('');
+  const autoFilledNameRef = useRef('');
   const locationRequestIdRef = useRef(0);
   const searchSessionRef = useRef(createPlaceSearchSession());
 
@@ -182,6 +183,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       const initialHasCoordinates = hasUsableCoordinates(nextDraft.lat, nextDraft.lng);
 
       fixedLocationQueryRef.current = initialHasCoordinates ? initialLocationQuery.trim() : '';
+      autoFilledNameRef.current = '';
       setDraft(nextDraft);
       setLocationQuery(initialLocationQuery);
       setLocationOptions([]);
@@ -240,11 +242,43 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
   }, [draft.lat, draft.lng, locationQuery, open, searchBias]);
 
   function update(field, value) {
+    if (field === 'name') autoFilledNameRef.current = '';
     setDraft((current) => ({ ...current, [field]: value }));
   }
 
   function hasSelectedLocation() {
     return hasUsableCoordinates(draft.lat, draft.lng);
+  }
+
+  function resetSelectedLocation() {
+    const previousAutoFilledName = autoFilledNameRef.current;
+    autoFilledNameRef.current = '';
+
+    setDraft((current) => {
+      const hadAutoFilledName = Boolean(previousAutoFilledName && current.name === previousAutoFilledName);
+
+      if (
+        !hadAutoFilledName &&
+        !hasUsableCoordinates(current.lat, current.lng) &&
+        !current.address &&
+        !current.zone &&
+        !current.providerPlaceId &&
+        !current.providerType
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        name: hadAutoFilledName ? '' : current.name,
+        address: '',
+        zone: '',
+        lat: '',
+        lng: '',
+        providerPlaceId: '',
+        providerType: '',
+      };
+    });
   }
 
   async function applyLocation(result) {
@@ -260,17 +294,24 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       fixedLocationQueryRef.current = nextLocationQuery.trim();
       setLocationOptions([]);
       setLocationQuery(nextLocationQuery);
-      setDraft((current) => ({
-        ...current,
-        name: current.name?.trim() ? current.name : resolved.name,
-        address: resolved.address || current.address,
-        zone: resolved.zone || current.zone || '',
-        lat: resolved.lat,
-        lng: resolved.lng,
-        category: resolved.category || inferPlaceCategory(resolved),
-        providerPlaceId: resolved.providerPlaceId || resolved.id || '',
-        providerType: resolved.providerType || resolved.type || '',
-      }));
+      const previousAutoFilledName = autoFilledNameRef.current;
+      const shouldTrackResolvedName = !draft.name?.trim() || draft.name === previousAutoFilledName;
+      autoFilledNameRef.current = shouldTrackResolvedName ? resolved.name : '';
+      setDraft((current) => {
+        const shouldUseResolvedName = !current.name?.trim() || current.name === previousAutoFilledName;
+
+        return {
+          ...current,
+          name: shouldUseResolvedName ? resolved.name : current.name,
+          address: resolved.address || current.address,
+          zone: resolved.zone || current.zone || '',
+          lat: resolved.lat,
+          lng: resolved.lng,
+          category: resolved.category || inferPlaceCategory(resolved),
+          providerPlaceId: resolved.providerPlaceId || resolved.id || '',
+          providerType: resolved.providerType || resolved.type || '',
+        };
+      });
     } catch (error) {
       if (requestId === locationRequestIdRef.current) {
         captureDiagnostic('search.form.resolve', error);
@@ -360,7 +401,10 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
                 inputValue={locationQuery}
                 onInputChange={(_, value, reason) => {
                   if (reason === 'reset' || reason === 'selectOption') return;
-                  if (reason === 'input' || reason === 'clear') fixedLocationQueryRef.current = '';
+                  if (reason === 'input' || reason === 'clear') {
+                    fixedLocationQueryRef.current = '';
+                    resetSelectedLocation();
+                  }
                   setLocationQuery(value);
                 }}
                 onChange={(_, value) => void applyLocation(value)}

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { defaultCenter } from '../data/demoData';
 import { captureDiagnostic } from '../lib/diagnostics';
+import { distanceInMeters } from '../lib/geo';
 
 const manualPositionKey = 'rumbo.manualPosition';
 const lastPositionKey = 'rumbo.lastPosition';
+const minLivePositionMoveMeters = 18;
 
 function getStoredPosition(key) {
   const stored = localStorage.getItem(key);
@@ -14,6 +16,17 @@ function getStoredPosition(key) {
   } catch {
     return null;
   }
+}
+
+function hasMovedEnough(previousPosition, nextPosition) {
+  if (previousPosition?.manual) return true;
+
+  return (
+    distanceInMeters(
+      { lat: Number(previousPosition?.lat), lng: Number(previousPosition?.lng) },
+      nextPosition,
+    ) >= minLivePositionMoveMeters
+  );
 }
 
 export function useUserLocation() {
@@ -33,10 +46,7 @@ export function useUserLocation() {
       label: 'Tu ubicación',
     };
     const previousPosition = currentPositionRef.current;
-    const movedEnough =
-      previousPosition?.manual ||
-      Math.abs(Number(previousPosition?.lat) - nextPosition.lat) > 0.00005 ||
-      Math.abs(Number(previousPosition?.lng) - nextPosition.lng) > 0.00005;
+    const movedEnough = hasMovedEnough(previousPosition, nextPosition);
 
     localStorage.setItem(lastPositionKey, JSON.stringify(nextPosition));
     livePositionVersionRef.current += 1;

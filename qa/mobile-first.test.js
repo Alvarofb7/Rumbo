@@ -20,6 +20,8 @@ describe('iPhone-first safeguards', () => {
 
     expect(placeDialog).not.toContain('draftStorageKey');
     expect(placeDialog).not.toContain('localStorage');
+    expect(placeDialog).toContain('resetSelectedLocation');
+    expect(placeDialog).toContain("lat: ''");
     expect(linkDialog).toContain("alignSelf: 'flex-end'");
     expect(linkDialog).toContain("borderRadius: '24px 24px 0 0'");
     expect(linkDialog).not.toContain('fullScreen=');
@@ -30,6 +32,8 @@ describe('iPhone-first safeguards', () => {
     expect(locationHook).toContain('enableHighAccuracy: false');
     expect(locationHook).toContain('Mantengo la referencia manual');
     expect(locationHook).toContain('livePositionVersionRef');
+    expect(locationHook).toContain('minLivePositionMoveMeters');
+    expect(locationHook).toContain('distanceInMeters');
   });
 
   it('queues Firestore changes offline and exposes mobile-safe actions', () => {
