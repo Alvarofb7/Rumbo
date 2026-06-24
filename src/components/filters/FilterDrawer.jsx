@@ -69,11 +69,11 @@ export default function FilterDrawer({ open, filters, setFilters, onClose, place
           </Box>
 
           <FormControl fullWidth disabled={!availableTags.length}>
-            <InputLabel shrink>Etiquetas</InputLabel>
+            <InputLabel shrink>Cocina, precio y plan</InputLabel>
             <Select
               multiple
               displayEmpty
-              label="Etiquetas"
+              label="Cocina, precio y plan"
               value={filters.tags}
               onChange={(event) => {
                 const value = event.target.value;
@@ -92,7 +92,7 @@ export default function FilterDrawer({ open, filters, setFilters, onClose, place
               ))}
             </Select>
             <FormHelperText>
-              {availableTags.length ? 'Puedes seleccionar varias.' : 'Añade etiquetas a algún lugar para filtrarlas aquí.'}
+              {availableTags.length ? 'Puedes seleccionar varias etiquetas.' : 'Añade etiquetas a algún lugar para filtrarlas aquí.'}
             </FormHelperText>
           </FormControl>
 

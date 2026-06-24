@@ -1,5 +1,5 @@
 import { hasGoogleMapsConfig, importGoogleLibrary } from './googleMaps';
-import { categoryFromGoogleType } from './placeData';
+import { categoryFromGoogleType, tagsFromGoogleTypes } from './placeData';
 
 const zoneTypePriority = [
   'neighborhood',
@@ -60,9 +60,15 @@ function getZone(addressComponents = []) {
   return '';
 }
 
+function categoryFromProviderTypes(types = []) {
+  return types.map(categoryFromGoogleType).find((category) => category !== 'other') || 'other';
+}
+
 function placeToResult(place) {
   const lat = place.location?.lat?.();
   const lng = place.location?.lng?.();
+  const providerTypes = [place.primaryType, ...(place.types || [])].filter(Boolean);
+  const category = categoryFromProviderTypes(providerTypes);
 
   return {
     id: place.id,
@@ -72,9 +78,11 @@ function placeToResult(place) {
     zone: getZone(place.addressComponents),
     lat: Number(lat),
     lng: Number(lng),
-    type: place.primaryType || place.types?.[0] || '',
-    providerType: place.primaryType || place.types?.[0] || '',
-    category: categoryFromGoogleType(place.primaryType || place.types?.[0] || ''),
+    type: providerTypes[0] || '',
+    providerType: providerTypes[0] || '',
+    types: providerTypes,
+    category,
+    tags: tagsFromGoogleTypes(providerTypes),
     sourceUrl: place.googleMapsURI || '',
     source: 'google-places',
     resolved: true,
@@ -184,7 +192,8 @@ export async function searchLocation(query, options = {}) {
         distanceMeters: Number(prediction.distanceMeters || 0),
         types: prediction.types || [],
         providerType: prediction.types?.[0] || '',
-        category: categoryFromGoogleType(prediction.types?.[0] || ''),
+        category: categoryFromProviderTypes(prediction.types || []),
+        tags: tagsFromGoogleTypes(prediction.types || []),
         source: 'google-places',
         prediction,
       }));

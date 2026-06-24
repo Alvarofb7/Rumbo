@@ -1,14 +1,9 @@
 export const categoryOptions = [
   { value: 'bar', label: 'Bar' },
   { value: 'restaurant', label: 'Restaurante' },
-  { value: 'tapas', label: 'Tapas' },
-  { value: 'sushi', label: 'Sushi / japonés' },
-  { value: 'grill', label: 'Carne / parrilla' },
-  { value: 'seafood', label: 'Pescado / marisco' },
-  { value: 'cafe', label: 'Café' },
-  { value: 'hotel', label: 'Hotel' },
-  { value: 'culture', label: 'Cultura' },
-  { value: 'shopping', label: 'Compras' },
+  { value: 'cafe', label: 'Cafetería' },
+  { value: 'bakery', label: 'Panadería / pastelería' },
+  { value: 'market', label: 'Mercado / puesto' },
   { value: 'other', label: 'Otro' },
 ];
 
@@ -17,14 +12,9 @@ const statusLabels = new Set(['pendiente', 'favorito', 'quiero ir', 'he ido', 'v
 const categoryTagAliases = {
   bar: ['bar', 'pub', 'taberna', 'bodega'],
   restaurant: ['restaurante', 'restaurant'],
-  tapas: ['tapas', 'tapeo', 'pinchos', 'pintxos'],
-  sushi: ['sushi', 'japonés', 'japones', 'ramen', 'omakase', 'izakaya'],
-  grill: ['carne', 'parrilla', 'asador', 'asado', 'steak', 'grill', 'barbacoa', 'bbq'],
-  seafood: ['pescado', 'marisco', 'marisquería', 'marisqueria', 'seafood', 'ceviche'],
-  cafe: ['café', 'cafe', 'coffee', 'panadería', 'panaderia', 'bakery'],
-  hotel: ['hotel', 'hostal', 'alojamiento'],
-  culture: ['cultura', 'museo', 'galería', 'galeria', 'monumento', 'mirador', 'parque'],
-  shopping: ['compras', 'tienda', 'mercado', 'shopping'],
+  cafe: ['cafetería', 'cafeteria', 'café', 'cafe', 'coffee'],
+  bakery: ['panadería', 'panaderia', 'pastelería', 'pasteleria', 'bakery'],
+  market: ['mercado', 'puesto', 'food hall'],
 };
 
 const googleTypeCategories = {
@@ -32,49 +22,82 @@ const googleTypeCategories = {
   pub: 'bar',
   wine_bar: 'bar',
   night_club: 'bar',
-  tapas_bar: 'tapas',
+  tapas_bar: 'bar',
   restaurant: 'restaurant',
   meal_delivery: 'restaurant',
   meal_takeaway: 'restaurant',
-  sushi_restaurant: 'sushi',
-  japanese_restaurant: 'sushi',
-  ramen_restaurant: 'sushi',
-  barbecue_restaurant: 'grill',
-  steak_house: 'grill',
-  steakhouse: 'grill',
-  seafood_restaurant: 'seafood',
+  breakfast_restaurant: 'restaurant',
+  brunch_restaurant: 'restaurant',
+  sushi_restaurant: 'restaurant',
+  japanese_restaurant: 'restaurant',
+  ramen_restaurant: 'restaurant',
+  barbecue_restaurant: 'restaurant',
+  steak_house: 'restaurant',
+  steakhouse: 'restaurant',
+  seafood_restaurant: 'restaurant',
+  pizza_restaurant: 'restaurant',
+  italian_restaurant: 'restaurant',
+  mexican_restaurant: 'restaurant',
+  hamburger_restaurant: 'restaurant',
+  vegan_restaurant: 'restaurant',
+  vegetarian_restaurant: 'restaurant',
   cafe: 'cafe',
   coffee_shop: 'cafe',
-  bakery: 'cafe',
-  lodging: 'hotel',
-  hotel: 'hotel',
-  museum: 'culture',
-  art_gallery: 'culture',
-  tourist_attraction: 'culture',
-  park: 'culture',
-  shopping_mall: 'shopping',
-  store: 'shopping',
-  clothing_store: 'shopping',
-  book_store: 'shopping',
+  bakery: 'bakery',
+  market: 'market',
+  food_court: 'market',
+};
+
+const googleTypeTags = {
+  tapas_bar: ['Tapas'],
+  sushi_restaurant: ['Sushi', 'Japonés'],
+  japanese_restaurant: ['Japonés'],
+  ramen_restaurant: ['Ramen', 'Japonés'],
+  barbecue_restaurant: ['Carne', 'Parrilla'],
+  steak_house: ['Carne'],
+  steakhouse: ['Carne'],
+  seafood_restaurant: ['Pescado', 'Marisco'],
+  pizza_restaurant: ['Pizza'],
+  italian_restaurant: ['Italiano'],
+  mexican_restaurant: ['Mexicano'],
+  hamburger_restaurant: ['Hamburguesa'],
+  vegan_restaurant: ['Vegano'],
+  vegetarian_restaurant: ['Vegano'],
+  breakfast_restaurant: ['Desayuno'],
+  brunch_restaurant: ['Brunch'],
+  wine_bar: ['Vino'],
+};
+const legacyCategoryTags = {
+  tapas: ['Tapas'],
+  sushi: ['Sushi'],
+  grill: ['Carne', 'Parrilla'],
+  seafood: ['Pescado', 'Marisco'],
 };
 
 function categoryFromText(value = '') {
   const text = value.toLowerCase();
-  if (/\b(tapas|tapeo|pinchos|pintxos)/.test(text)) return 'tapas';
-  if (/\b(sushi|japon[eé]s|japones|ramen|omakase|izakaya)/.test(text)) return 'sushi';
-  if (/\b(carne|parrilla|asador|asado|steak|grill|barbacoa|bbq)/.test(text)) return 'grill';
-  if (/\b(pescado|marisco|marisquer[ií]a|seafood|ceviche)/.test(text)) return 'seafood';
-  if (/\b(bar|pub|taberna|bodega|coctel)/.test(text)) return 'bar';
-  if (/\b(restaurante|restaurant|brunch)/.test(text)) return 'restaurant';
-  if (/\b(café|cafe|coffee|panadería|bakery)/.test(text)) return 'cafe';
-  if (/\b(hotel|hostal|alojamiento)/.test(text)) return 'hotel';
-  if (/\b(museo|galería|monumento|mirador|parque)/.test(text)) return 'culture';
-  if (/\b(tienda|mercado|compras|shopping)/.test(text)) return 'shopping';
+  if (/\b(bar|pub|taberna|bodega|c[oó]ctel(?:er[ií]a)?)\b/.test(text)) return 'bar';
+  if (/\b(café|cafe|coffee|cafeter[ií]a)/.test(text)) return 'cafe';
+  if (/\b(panader[ií]a|pasteler[ií]a|bakery)/.test(text)) return 'bakery';
+  if (/\b(mercado|puesto|food hall)/.test(text)) return 'market';
+  if (/\b(restaurante|restaurant|brunch|desayuno|tapas|tapeo|pinchos|pintxos|sushi|japon[eé]s|japones|ramen|omakase|izakaya|carne|parrilla|asador|asado|steak|grill|barbacoa|bbq|pescado|marisco|marisquer[ií]a|seafood|ceviche|pizza|pasta|italian[oa]|mexican[oa]|taco|hamburguesa|burger|vegan[oa]|vegetarian[oa])/.test(text)) return 'restaurant';
   return 'other';
 }
 
 export function categoryFromGoogleType(type = '') {
   return googleTypeCategories[type] || 'other';
+}
+
+export function tagsFromGoogleTypes(types = []) {
+  const seen = new Set();
+  return types
+    .flatMap((type) => googleTypeTags[type] || [])
+    .filter((tag) => {
+      const key = tag.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 export function getCategoryLabel(category) {
@@ -103,7 +126,7 @@ export function inferPlaceCategory(place = {}) {
   const providerCategory = providerTypes.map(categoryFromGoogleType).find((category) => category !== 'other');
   if (providerCategory) return providerCategory;
 
-  return categoryFromText([place.name, place.title, ...(place.tags || [])].filter(Boolean).join(' '));
+  return categoryFromText([place.name, place.title, place.category, ...(place.tags || [])].filter(Boolean).join(' '));
 }
 
 export function normalizePlaceTags(tags = [], category = 'other') {
@@ -126,11 +149,12 @@ export function sanitizePlaceRecord(record = {}) {
   delete cleanRecord.imageUrl;
   delete cleanRecord.notes;
   const category = inferPlaceCategory(cleanRecord);
+  const providerTypes = [cleanRecord.providerType, cleanRecord.type, ...(cleanRecord.types || [])].filter(Boolean);
 
   return {
     ...cleanRecord,
     category,
-    tags: normalizePlaceTags(cleanRecord.tags, category),
+    tags: normalizePlaceTags([...(legacyCategoryTags[cleanRecord.category] || []), ...(cleanRecord.tags || []), ...tagsFromGoogleTypes(providerTypes)], category),
   };
 }
 

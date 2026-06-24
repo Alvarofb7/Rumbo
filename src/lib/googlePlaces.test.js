@@ -95,8 +95,8 @@ describe('Google Places search', () => {
       formattedAddress: 'Plaza Nueva, 7, 41001 Sevilla, España',
       location: { lat: () => 37.388222, lng: () => -5.9963925 },
       addressComponents: [{ longText: 'Sevilla', types: ['locality'] }],
-      primaryType: 'restaurant',
-      types: ['restaurant'],
+      primaryType: 'barbecue_restaurant',
+      types: ['barbecue_restaurant', 'restaurant'],
       fetchFields: vi.fn().mockResolvedValue(undefined),
     };
     const placePrediction = prediction({ toPlace: () => place });
@@ -114,6 +114,27 @@ describe('Google Places search', () => {
       lng: -5.9963925,
     });
     expect(session.token).toBeNull();
+  });
+
+  it('uses secondary Google types to infer food category and tags', async () => {
+    const place = {
+      id: 'place-generic',
+      displayName: 'Taquería Centro',
+      formattedAddress: 'Calle Feria, Sevilla',
+      location: { lat: () => 37.397, lng: () => -5.991 },
+      addressComponents: [{ longText: 'Sevilla', types: ['locality'] }],
+      primaryType: 'food',
+      types: ['food', 'mexican_restaurant', 'restaurant'],
+      fetchFields: vi.fn().mockResolvedValue(undefined),
+    };
+    const placePrediction = prediction({ toPlace: () => place });
+
+    const result = await resolveLocationSuggestion({ prediction: placePrediction }, createPlaceSearchSession());
+
+    expect(result).toMatchObject({
+      category: 'restaurant',
+      tags: ['Mexicano'],
+    });
   });
 
   it('loads a clicked Google Maps place by its place id', async () => {
@@ -155,8 +176,8 @@ describe('Google Places search', () => {
       formattedAddress: 'C. Calígula, 32, Montequinto',
       location: { lat: () => 37.347, lng: () => -5.94 },
       addressComponents: [{ longText: 'Montequinto', types: ['locality'] }],
-      primaryType: 'restaurant',
-      types: ['restaurant'],
+      primaryType: 'barbecue_restaurant',
+      types: ['barbecue_restaurant', 'restaurant'],
       googleMapsURI: 'https://maps.google.com/?cid=asador',
     };
     const searchNearby = vi.fn().mockResolvedValue({ places: [nearbyPlace] });
@@ -181,6 +202,7 @@ describe('Google Places search', () => {
       providerPlaceId: 'place-asador',
       name: 'Asador Montequinto',
       category: 'restaurant',
+      tags: ['Carne', 'Parrilla'],
     });
   });
 });

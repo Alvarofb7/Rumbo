@@ -77,11 +77,18 @@ function inferTags(title) {
   if (lower.includes('terraza')) tags.push('Terraza');
   if (lower.includes('tapas')) tags.push('Tapas');
   if (lower.includes('brunch')) tags.push('Brunch');
+  if (/\b(desayuno|breakfast)\b/.test(lower)) tags.push('Desayuno');
   if (lower.includes('vino')) tags.push('Vino');
   if (/\b(sushi|japon[eé]s|japones|ramen|omakase)\b/.test(lower)) tags.push('Sushi');
   if (/\b(carne|parrilla|asador|steak|grill)\b/.test(lower)) tags.push('Carne');
   if (/\b(pescado|marisco|marisquer[ií]a|seafood)\b/.test(lower)) tags.push('Pescado');
+  if (/\b(pizza|pizzer[ií]a)\b/.test(lower)) tags.push('Pizza');
+  if (/\b(pasta|italian[oa])\b/.test(lower)) tags.push('Italiano');
+  if (/\b(mexican[oa]|taco|taquer[ií]a)\b/.test(lower)) tags.push('Mexicano');
+  if (/\b(hamburguesa|burger)\b/.test(lower)) tags.push('Hamburguesa');
+  if (/\b(vegano|vegana|vegan|vegetarian[oa])\b/.test(lower)) tags.push('Vegano');
   if (/\b(barato|econ[oó]mico|cheap)\b/.test(lower)) tags.push('Barato');
+  if (/\b(medio|moderado|normal)\b/.test(lower)) tags.push('Medio');
   if (/\b(caro|cara|premium|fine dining|capricho)\b/.test(lower)) tags.push('Caro');
   if (/\b(cita|rom[aá]ntico|romantico|date)\b/.test(lower)) tags.push('Cita');
 

@@ -4,6 +4,7 @@ import {
   getPlaceRecordMigration,
   normalizePlaceRating,
   sanitizePlaceRecord,
+  tagsFromGoogleTypes,
 } from './placeData';
 
 describe('place data normalization', () => {
@@ -19,22 +20,27 @@ describe('place data normalization', () => {
 
   it('maps Google place types to a stable category', () => {
     expect(categoryFromGoogleType('restaurant')).toBe('restaurant');
-    expect(categoryFromGoogleType('sushi_restaurant')).toBe('sushi');
-    expect(categoryFromGoogleType('barbecue_restaurant')).toBe('grill');
-    expect(categoryFromGoogleType('seafood_restaurant')).toBe('seafood');
+    expect(categoryFromGoogleType('sushi_restaurant')).toBe('restaurant');
+    expect(categoryFromGoogleType('barbecue_restaurant')).toBe('restaurant');
+    expect(categoryFromGoogleType('seafood_restaurant')).toBe('restaurant');
+    expect(tagsFromGoogleTypes(['sushi_restaurant', 'barbecue_restaurant', 'sushi_restaurant'])).toEqual(['Sushi', 'Japonés', 'Carne', 'Parrilla']);
     expect(categoryFromGoogleType('coffee_shop')).toBe('cafe');
-    expect(categoryFromGoogleType('museum')).toBe('culture');
+    expect(categoryFromGoogleType('museum')).toBe('other');
   });
 
-  it('infers specific food types without losing useful personal tags', () => {
+  it('keeps food specialities as personal tags instead of place types', () => {
     expect(sanitizePlaceRecord({ name: 'Omakase sushi barato para cita', tags: ['Sushi', 'Barato', 'Cita'] })).toMatchObject({
-      category: 'sushi',
-      tags: ['Barato', 'Cita'],
+      category: 'restaurant',
+      tags: ['Sushi', 'Barato', 'Cita'],
     });
     expect(sanitizePlaceRecord({ name: 'Restaurante pendiente', category: 'restaurant', tags: ['Sushi', 'Barato', 'sushi'] }).tags).toEqual([
       'Sushi',
       'Barato',
     ]);
+    expect(sanitizePlaceRecord({ name: 'Asador antiguo', category: 'grill', tags: ['Caro'] })).toMatchObject({
+      category: 'restaurant',
+      tags: ['Carne', 'Parrilla', 'Caro'],
+    });
   });
 
   it('keeps explicit categories and normalizes personal ratings', () => {

@@ -442,9 +442,10 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
             <Stack spacing={1.4}>
               <TextField
                 select
-                label="Tipo de lugar"
+                label="Formato del sitio"
                 value={draft.category || 'other'}
                 onChange={(event) => update('category', event.target.value)}
+                helperText="Bar, restaurante o cafetería. Cocina, precio y plan van en etiquetas."
                 fullWidth
                 sx={compactFieldSx}
               >
@@ -502,9 +503,9 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="Etiquetas personales"
-                    placeholder="Sushi, cita, barato..."
-                    helperText="Elige varias o escribe una nueva."
+                    label="Cocina, precio y plan"
+                    placeholder="Sushi, carne, cita, barato..."
+                    helperText="Combina varias o escribe una nueva."
                     sx={compactFieldSx}
                   />
                 )}
