@@ -45,6 +45,7 @@ import {
 import { findNearestPlace } from '../lib/geo';
 import { captureDiagnostic, recordBreadcrumb } from '../lib/diagnostics';
 import { importPlaceFromUrl } from '../lib/placeImporter';
+import { findDuplicatePlace } from '../lib/placeDuplicates';
 import { getPlaceRecordMigration, sanitizePlaceRecord } from '../lib/placeData';
 import FilterDrawer from './filters/FilterDrawer';
 import InboxPanel from './panels/InboxPanel';
@@ -383,6 +384,18 @@ export default function MainApp() {
     };
   }
 
+  function openDuplicatePlace(place, message) {
+    googlePlaceRequestRef.current += 1;
+    setGooglePlacePreview(null);
+    setGooglePlaceLoading(false);
+    setSelectedPlaceId(place.id);
+    if (hasValidCoordinates(place)) setMapCenter({ lat: Number(place.lat), lng: Number(place.lng) });
+    setPlaceDialogOpen(false);
+    setPlacesOpen(false);
+    setReviewOpen(false);
+    setToast(message);
+  }
+
   async function handleSavePlace(place) {
     let result;
     const mode = place.id ? 'edit' : 'create';
@@ -397,6 +410,20 @@ export default function MainApp() {
     }
 
     const { payload, approximate } = result;
+    const duplicate = findDuplicatePlace(payload, places, { excludeId: payload.id });
+
+    if (duplicate) {
+      recordBreadcrumb('place.save.duplicate', { mode });
+      if (payload.id) {
+        setSelectedPlaceId(duplicate.id);
+        if (hasValidCoordinates(duplicate)) setMapCenter({ lat: Number(duplicate.lat), lng: Number(duplicate.lng) });
+        setToast(`Ya existe un lugar parecido: ${duplicate.name}.`);
+        return false;
+      }
+
+      openDuplicatePlace(duplicate, `Ya tenías guardado ${duplicate.name}. Te lo abro.`);
+      return true;
+    }
 
     if (payload.id) {
       await placesStore.updateItem(payload.id, payload);
@@ -449,6 +476,23 @@ export default function MainApp() {
   async function handleImportLink(url) {
     recordBreadcrumb('link.import.started');
     const candidate = await importPlaceFromUrl(url);
+    const duplicatePlace = findDuplicatePlace(candidate, places);
+    if (duplicatePlace) {
+      recordBreadcrumb('link.import.duplicate', { target: 'places' });
+      setLinkDialogOpen(false);
+      openDuplicatePlace(duplicatePlace, `Ya tenías guardado ${duplicatePlace.name}. Te lo abro.`);
+      return;
+    }
+
+    const duplicateInboxItem = findDuplicatePlace(candidate, inbox);
+    if (duplicateInboxItem) {
+      recordBreadcrumb('link.import.duplicate', { target: 'inbox' });
+      setLinkDialogOpen(false);
+      openReview();
+      setToast(`Ese enlace ya está en revisión: ${duplicateInboxItem.title || duplicateInboxItem.name}.`);
+      return;
+    }
+
     await inboxStore.addItem(candidate);
     setLinkDialogOpen(false);
     openReview();
@@ -483,6 +527,14 @@ export default function MainApp() {
     }
 
     const { payload, approximate } = result;
+    const duplicate = findDuplicatePlace(payload, places);
+    if (duplicate) {
+      recordBreadcrumb('inbox.save.duplicate');
+      await inboxStore.deleteItem(item.id);
+      openDuplicatePlace(duplicate, `Ya tenías guardado ${duplicate.name}. He quitado la recomendación duplicada.`);
+      return;
+    }
+
     const created = await placesStore.addItem(payload);
     await inboxStore.deleteItem(item.id);
     setSelectedPlaceId(created.id);
