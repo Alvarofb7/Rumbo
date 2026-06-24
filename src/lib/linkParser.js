@@ -78,6 +78,12 @@ function inferTags(title) {
   if (lower.includes('tapas')) tags.push('Tapas');
   if (lower.includes('brunch')) tags.push('Brunch');
   if (lower.includes('vino')) tags.push('Vino');
+  if (/\b(sushi|japon[eé]s|japones|ramen|omakase)\b/.test(lower)) tags.push('Sushi');
+  if (/\b(carne|parrilla|asador|steak|grill)\b/.test(lower)) tags.push('Carne');
+  if (/\b(pescado|marisco|marisquer[ií]a|seafood)\b/.test(lower)) tags.push('Pescado');
+  if (/\b(barato|econ[oó]mico|cheap)\b/.test(lower)) tags.push('Barato');
+  if (/\b(caro|cara|premium|fine dining|capricho)\b/.test(lower)) tags.push('Caro');
+  if (/\b(cita|rom[aá]ntico|romantico|date)\b/.test(lower)) tags.push('Cita');
 
   return tags;
 }

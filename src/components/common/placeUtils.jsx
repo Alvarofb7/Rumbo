@@ -5,10 +5,14 @@ import InstagramIcon from '@mui/icons-material/Instagram';
 import LocalBarIcon from '@mui/icons-material/LocalBar';
 import LocalCafeIcon from '@mui/icons-material/LocalCafe';
 import MapIcon from '@mui/icons-material/Map';
+import OutdoorGrillIcon from '@mui/icons-material/OutdoorGrill';
 import PublicIcon from '@mui/icons-material/Public';
+import RamenDiningIcon from '@mui/icons-material/RamenDining';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
+import SetMealIcon from '@mui/icons-material/SetMeal';
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
 import StarIcon from '@mui/icons-material/Star';
+import TapasIcon from '@mui/icons-material/Tapas';
 import TripOriginIcon from '@mui/icons-material/TripOrigin';
 import { Chip, Stack, Typography } from '@mui/material';
 import { sourceMeta, statusOptions } from '../../data/demoData';
@@ -25,6 +29,10 @@ const sourceIcons = {
 const categoryMeta = {
   bar: { color: '#8a4d09', Icon: LocalBarIcon },
   restaurant: { color: '#f28c38', Icon: RestaurantIcon },
+  tapas: { color: '#bc6c25', Icon: TapasIcon },
+  sushi: { color: '#0f766e', Icon: RamenDiningIcon },
+  grill: { color: '#a33a2a', Icon: OutdoorGrillIcon },
+  seafood: { color: '#1976a3', Icon: SetMealIcon },
   cafe: { color: '#8b5e3c', Icon: LocalCafeIcon },
   hotel: { color: '#526ea0', Icon: HotelIcon },
   culture: { color: '#6f7f5f', Icon: ExploreIcon },

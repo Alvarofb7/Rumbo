@@ -19,8 +19,22 @@ describe('place data normalization', () => {
 
   it('maps Google place types to a stable category', () => {
     expect(categoryFromGoogleType('restaurant')).toBe('restaurant');
+    expect(categoryFromGoogleType('sushi_restaurant')).toBe('sushi');
+    expect(categoryFromGoogleType('barbecue_restaurant')).toBe('grill');
+    expect(categoryFromGoogleType('seafood_restaurant')).toBe('seafood');
     expect(categoryFromGoogleType('coffee_shop')).toBe('cafe');
     expect(categoryFromGoogleType('museum')).toBe('culture');
+  });
+
+  it('infers specific food types without losing useful personal tags', () => {
+    expect(sanitizePlaceRecord({ name: 'Omakase sushi barato para cita', tags: ['Sushi', 'Barato', 'Cita'] })).toMatchObject({
+      category: 'sushi',
+      tags: ['Barato', 'Cita'],
+    });
+    expect(sanitizePlaceRecord({ name: 'Restaurante pendiente', category: 'restaurant', tags: ['Sushi', 'Barato', 'sushi'] }).tags).toEqual([
+      'Sushi',
+      'Barato',
+    ]);
   });
 
   it('keeps explicit categories and normalizes personal ratings', () => {

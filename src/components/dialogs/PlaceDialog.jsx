@@ -442,7 +442,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
             <Stack spacing={1.4}>
               <TextField
                 select
-                label="Categoría"
+                label="Tipo de lugar"
                 value={draft.category || 'other'}
                 onChange={(event) => update('category', event.target.value)}
                 fullWidth
@@ -499,7 +499,15 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
                 value={draft.tags || []}
                 onChange={(_, value) => update('tags', value)}
                 sx={{ minWidth: 0 }}
-                renderInput={(params) => <TextField {...params} label="Etiquetas personales" placeholder="Terraza, cita, trabajo..." sx={compactFieldSx} />}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Etiquetas personales"
+                    placeholder="Sushi, cita, barato..."
+                    helperText="Elige varias o escribe una nueva."
+                    sx={compactFieldSx}
+                  />
+                )}
               />
             </Stack>
           </Paper>

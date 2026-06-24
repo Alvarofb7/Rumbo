@@ -1,6 +1,10 @@
 export const categoryOptions = [
   { value: 'bar', label: 'Bar' },
   { value: 'restaurant', label: 'Restaurante' },
+  { value: 'tapas', label: 'Tapas' },
+  { value: 'sushi', label: 'Sushi / japonés' },
+  { value: 'grill', label: 'Carne / parrilla' },
+  { value: 'seafood', label: 'Pescado / marisco' },
   { value: 'cafe', label: 'Café' },
   { value: 'hotel', label: 'Hotel' },
   { value: 'culture', label: 'Cultura' },
@@ -9,17 +13,36 @@ export const categoryOptions = [
 ];
 
 const categoryValues = new Set(categoryOptions.map((option) => option.value));
-const categoryLabels = new Set(categoryOptions.map((option) => option.label.toLowerCase()));
 const statusLabels = new Set(['pendiente', 'favorito', 'quiero ir', 'he ido', 'visitado', 'descartado']);
+const categoryTagAliases = {
+  bar: ['bar', 'pub', 'taberna', 'bodega'],
+  restaurant: ['restaurante', 'restaurant'],
+  tapas: ['tapas', 'tapeo', 'pinchos', 'pintxos'],
+  sushi: ['sushi', 'japonés', 'japones', 'ramen', 'omakase', 'izakaya'],
+  grill: ['carne', 'parrilla', 'asador', 'asado', 'steak', 'grill', 'barbacoa', 'bbq'],
+  seafood: ['pescado', 'marisco', 'marisquería', 'marisqueria', 'seafood', 'ceviche'],
+  cafe: ['café', 'cafe', 'coffee', 'panadería', 'panaderia', 'bakery'],
+  hotel: ['hotel', 'hostal', 'alojamiento'],
+  culture: ['cultura', 'museo', 'galería', 'galeria', 'monumento', 'mirador', 'parque'],
+  shopping: ['compras', 'tienda', 'mercado', 'shopping'],
+};
 
 const googleTypeCategories = {
   bar: 'bar',
   pub: 'bar',
   wine_bar: 'bar',
   night_club: 'bar',
+  tapas_bar: 'tapas',
   restaurant: 'restaurant',
   meal_delivery: 'restaurant',
   meal_takeaway: 'restaurant',
+  sushi_restaurant: 'sushi',
+  japanese_restaurant: 'sushi',
+  ramen_restaurant: 'sushi',
+  barbecue_restaurant: 'grill',
+  steak_house: 'grill',
+  steakhouse: 'grill',
+  seafood_restaurant: 'seafood',
   cafe: 'cafe',
   coffee_shop: 'cafe',
   bakery: 'cafe',
@@ -37,8 +60,12 @@ const googleTypeCategories = {
 
 function categoryFromText(value = '') {
   const text = value.toLowerCase();
+  if (/\b(tapas|tapeo|pinchos|pintxos)/.test(text)) return 'tapas';
+  if (/\b(sushi|japon[eé]s|japones|ramen|omakase|izakaya)/.test(text)) return 'sushi';
+  if (/\b(carne|parrilla|asador|asado|steak|grill|barbacoa|bbq)/.test(text)) return 'grill';
+  if (/\b(pescado|marisco|marisquer[ií]a|seafood|ceviche)/.test(text)) return 'seafood';
   if (/\b(bar|pub|taberna|bodega|coctel)/.test(text)) return 'bar';
-  if (/\b(restaurante|restaurant|tapas|brunch)/.test(text)) return 'restaurant';
+  if (/\b(restaurante|restaurant|brunch)/.test(text)) return 'restaurant';
   if (/\b(café|cafe|coffee|panadería|bakery)/.test(text)) return 'cafe';
   if (/\b(hotel|hostal|alojamiento)/.test(text)) return 'hotel';
   if (/\b(museo|galería|monumento|mirador|parque)/.test(text)) return 'culture';
@@ -52,6 +79,15 @@ export function categoryFromGoogleType(type = '') {
 
 export function getCategoryLabel(category) {
   return categoryOptions.find((option) => option.value === category)?.label || 'Otro';
+}
+
+function getCategoryTagLabels(category) {
+  const option = categoryOptions.find((candidate) => candidate.value === category);
+  return new Set(
+    [category, option?.label, ...(categoryTagAliases[category] || [])]
+      .filter(Boolean)
+      .map((label) => label.toLowerCase()),
+  );
 }
 
 export function normalizePlaceRating(value) {
@@ -71,7 +107,7 @@ export function inferPlaceCategory(place = {}) {
 }
 
 export function normalizePlaceTags(tags = [], category = 'other') {
-  const categoryLabel = getCategoryLabel(category).toLowerCase();
+  const categoryLabels = getCategoryTagLabels(category);
   const seen = new Set();
 
   return tags
@@ -79,7 +115,7 @@ export function normalizePlaceTags(tags = [], category = 'other') {
     .filter(Boolean)
     .filter((tag) => {
       const key = tag.toLowerCase();
-      if (seen.has(key) || statusLabels.has(key) || categoryLabels.has(key) || key === categoryLabel) return false;
+      if (seen.has(key) || statusLabels.has(key) || categoryLabels.has(key)) return false;
       seen.add(key);
       return true;
     });
