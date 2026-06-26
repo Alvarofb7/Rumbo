@@ -47,6 +47,7 @@ import { captureDiagnostic, recordBreadcrumb } from '../lib/diagnostics';
 import { importPlaceFromUrl } from '../lib/placeImporter';
 import { findDuplicatePlace } from '../lib/placeDuplicates';
 import { getPlaceRecordMigration, sanitizePlaceRecord } from '../lib/placeData';
+import { buildDirectionsUrl, normalizeMapProviderPreference } from '../lib/mapDirections';
 import FilterDrawer from './filters/FilterDrawer';
 import InboxPanel from './panels/InboxPanel';
 import LinkImportDialog from './dialogs/LinkImportDialog';
@@ -82,6 +83,8 @@ const initialFilters = {
   sort: 'nearest',
 };
 
+const mapProviderPreferenceKey = 'rumbo.mapProviderPreference';
+
 function hasValidCoordinate(value) {
   return value !== '' && value !== null && value !== undefined && Number.isFinite(Number(value));
 }
@@ -97,6 +100,15 @@ function activeFilterCount(filters) {
     filters.minRating > 0,
     filters.zone !== 'all',
   ].filter(Boolean).length;
+}
+
+function readMapProviderPreference() {
+  if (typeof localStorage === 'undefined') return 'auto';
+  try {
+    return normalizeMapProviderPreference(localStorage.getItem(mapProviderPreferenceKey));
+  } catch {
+    return 'auto';
+  }
 }
 
 function DataDrawer({ open, title, subtitle, isDesktop, onClose, children, fitContent = true }) {
@@ -179,6 +191,7 @@ export default function MainApp() {
   const [googlePlacePreview, setGooglePlacePreview] = useState(null);
   const [googlePlaceLoading, setGooglePlaceLoading] = useState(false);
   const [deletedPlace, setDeletedPlace] = useState(null);
+  const [mapProviderPreference, setMapProviderPreference] = useState(readMapProviderPreference);
   const [toast, setToast] = useState('');
   const mapSearchSessionRef = useRef(createPlaceSearchSession());
   const googlePlaceRequestRef = useRef(0);
@@ -721,10 +734,20 @@ export default function MainApp() {
   function openDirections(place) {
     if (!hasValidCoordinates(place)) return;
 
-    const lat = Number(place.lat);
-    const lng = Number(place.lng);
-    const label = encodeURIComponent(place.name || 'Destino');
-    window.open(`https://maps.apple.com/?daddr=${lat},${lng}&q=${label}`, '_blank', 'noopener,noreferrer');
+    const { provider, url } = buildDirectionsUrl(place, mapProviderPreference);
+    if (!url) return;
+    recordBreadcrumb('directions.opened', { provider, preference: mapProviderPreference });
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  function updateMapProviderPreference(nextPreference) {
+    const normalized = normalizeMapProviderPreference(nextPreference);
+    setMapProviderPreference(normalized);
+    try {
+      localStorage.setItem(mapProviderPreferenceKey, normalized);
+    } catch {
+      captureDiagnostic('settings.map-provider.persist', new Error('Unable to persist map provider preference'));
+    }
   }
 
   const showMapSearchPanel = mapSearchOpen && (mapSearchQuery.trim().length > 0 || mapSearchLoading || mapSearchError);
@@ -1095,6 +1118,8 @@ export default function MainApp() {
           onImportLink={() => setLinkDialogOpen(true)}
           onOpenReview={openReview}
           onRetrySync={() => void retrySync()}
+          mapProviderPreference={mapProviderPreference}
+          onMapProviderPreferenceChange={updateMapProviderPreference}
         />
       </Drawer>
     </Box>
