@@ -5,15 +5,10 @@ import {
   Button,
   Chip,
   Divider,
-  FormControl,
-  FormHelperText,
-  InputLabel,
   List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  MenuItem,
-  Select,
   Stack,
   Typography,
 } from '@mui/material';
@@ -25,12 +20,10 @@ import DownloadIcon from '@mui/icons-material/Download';
 import AddLinkIcon from '@mui/icons-material/AddLink';
 import InboxIcon from '@mui/icons-material/Inbox';
 import LogoutIcon from '@mui/icons-material/Logout';
-import NearMeIcon from '@mui/icons-material/NearMe';
 import StorageIcon from '@mui/icons-material/Storage';
 import SyncIcon from '@mui/icons-material/Sync';
 import { useAuth } from '../../context/AuthContext';
 import { captureDiagnostic, getDiagnostics, shareDiagnostics } from '../../lib/diagnostics';
-import { mapProviderOptions } from '../../lib/mapDirections';
 
 export default function AppMenuDrawer({
   stats,
@@ -41,8 +34,6 @@ export default function AppMenuDrawer({
   onImportLink,
   onOpenReview,
   onRetrySync,
-  mapProviderPreference = 'auto',
-  onMapProviderPreferenceChange = () => {},
 }) {
   const { user, signOut } = useAuth();
   const diagnosticCount = getDiagnostics().reduce((total, incident) => total + Number(incident.count || 1), 0);
@@ -145,33 +136,6 @@ export default function AppMenuDrawer({
               Reintentar sincronización
             </Button>
           )}
-
-          <Stack spacing={1}>
-            <Stack direction="row" spacing={1.2} alignItems="center">
-              <NearMeIcon color="primary" />
-              <Box>
-                <Typography fontWeight={850}>App para ir</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  El botón Ir se adapta a tu móvil.
-                </Typography>
-              </Box>
-            </Stack>
-            <FormControl fullWidth size="small">
-              <InputLabel>Mapas</InputLabel>
-              <Select
-                label="Mapas"
-                value={mapProviderPreference}
-                onChange={(event) => onMapProviderPreferenceChange(event.target.value)}
-              >
-                {mapProviderOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-              <FormHelperText>Automático usa Apple Maps en iPhone y Google Maps en Android.</FormHelperText>
-            </FormControl>
-          </Stack>
 
           <Button variant="outlined" startIcon={<DownloadIcon />} onClick={exportData}>
             Exportar JSON

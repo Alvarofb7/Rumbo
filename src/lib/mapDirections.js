@@ -1,11 +1,3 @@
-export const mapProviderOptions = [
-  { value: 'auto', label: 'Automático' },
-  { value: 'apple', label: 'Apple Maps' },
-  { value: 'google', label: 'Google Maps' },
-];
-
-const validMapProviders = new Set(mapProviderOptions.map((option) => option.value));
-
 function encode(value) {
   return encodeURIComponent(String(value || '').trim());
 }
@@ -14,25 +6,20 @@ function hasValidCoordinate(value) {
   return value !== '' && value !== null && value !== undefined && Number.isFinite(Number(value));
 }
 
-export function normalizeMapProviderPreference(value) {
-  return validMapProviders.has(value) ? value : 'auto';
-}
-
 export function getDeviceMapProvider(navigatorLike = globalThis.navigator) {
   const userAgent = navigatorLike?.userAgent || '';
   const platform = navigatorLike?.platform || '';
   const maxTouchPoints = Number(navigatorLike?.maxTouchPoints || 0);
-  const isAndroid = /Android/i.test(userAgent);
-  const isIOS = /iPhone|iPad|iPod/i.test(userAgent) || (/Macintosh/i.test(platform) && maxTouchPoints > 1);
+  const isAppleDevice =
+    /iPhone|iPad|iPod|Macintosh|Mac OS X/i.test(userAgent) ||
+    /Mac/i.test(platform) ||
+    (/Macintosh/i.test(platform) && maxTouchPoints > 1);
 
-  if (isAndroid) return 'google';
-  if (isIOS) return 'apple';
-  return 'apple';
+  return isAppleDevice ? 'apple' : 'google';
 }
 
-export function resolveMapProvider(preference = 'auto', navigatorLike = globalThis.navigator) {
-  const normalized = normalizeMapProviderPreference(preference);
-  return normalized === 'auto' ? getDeviceMapProvider(navigatorLike) : normalized;
+export function resolveMapProvider(navigatorLike = globalThis.navigator) {
+  return getDeviceMapProvider(navigatorLike);
 }
 
 export function buildAppleDirectionsUrl(place) {
@@ -60,8 +47,8 @@ export function buildGoogleDirectionsUrl(place) {
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
-export function buildDirectionsUrl(place, preference = 'auto', navigatorLike = globalThis.navigator) {
-  const provider = resolveMapProvider(preference, navigatorLike);
+export function buildDirectionsUrl(place, navigatorLike = globalThis.navigator) {
+  const provider = resolveMapProvider(navigatorLike);
   const url = provider === 'google' ? buildGoogleDirectionsUrl(place) : buildAppleDirectionsUrl(place);
 
   return { provider, url };
