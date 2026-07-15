@@ -30,8 +30,24 @@ export function getNextActiveIndex(currentIndex, optionCount, direction) {
 }
 
 export function getSearchOptionId(listboxId, result, index) {
-  const key = result.id || `${result.name}-${result.lat}-${result.lng}` || index;
+  const key = result.id || (result.name ? `${result.name}-${result.lat ?? ''}-${result.lng ?? ''}-${index}` : index);
   return `${listboxId}-option-${String(key).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+}
+
+export function createLatestRequestGuard() {
+  let currentRequest = 0;
+  return {
+    next() {
+      currentRequest += 1;
+      return currentRequest;
+    },
+    isCurrent(request) {
+      return request === currentRequest;
+    },
+    invalidate() {
+      currentRequest += 1;
+    },
+  };
 }
 
 export default function MapSearch({ bias, onMenuOpen, onSelect, syncMeta }) {
@@ -39,6 +55,7 @@ export default function MapSearch({ bias, onMenuOpen, onSelect, syncMeta }) {
   const listboxId = `map-search-${generatedId}`;
   const inputRef = useRef(null);
   const sessionRef = useRef(createPlaceSearchSession());
+  const requestGuardRef = useRef(createLatestRequestGuard());
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -64,6 +81,7 @@ export default function MapSearch({ bias, onMenuOpen, onSelect, syncMeta }) {
 
     let ignore = false;
     const timeoutId = window.setTimeout(async () => {
+      const request = requestGuardRef.current.next();
       setLoading(true);
       setError('');
       try {
@@ -72,20 +90,20 @@ export default function MapSearch({ bias, onMenuOpen, onSelect, syncMeta }) {
           session: sessionRef.current,
           allowTextSearch: true,
         });
-        if (!ignore) {
+        if (!ignore && requestGuardRef.current.isCurrent(request)) {
           setResults(nextResults);
           setActiveIndex(-1);
           if (!nextResults.length) setError('No he encontrado esa ubicación.');
         }
       } catch (searchError) {
-        if (!ignore) {
+        if (!ignore && requestGuardRef.current.isCurrent(request)) {
           captureDiagnostic('search.main.suggestions', searchError);
           setResults([]);
           setActiveIndex(-1);
           setError(searchError.message);
         }
       } finally {
-        if (!ignore) setLoading(false);
+        if (!ignore && requestGuardRef.current.isCurrent(request)) setLoading(false);
       }
     }, 350);
 
@@ -96,10 +114,12 @@ export default function MapSearch({ bias, onMenuOpen, onSelect, syncMeta }) {
   }, [bias, open, query]);
 
   async function selectResult(result) {
+    const request = requestGuardRef.current.next();
     setLoading(true);
     setError('');
     try {
       const resolved = await resolveLocationSuggestion(result, sessionRef.current);
+      if (!requestGuardRef.current.isCurrent(request)) return;
       setQuery(resolved.name || resolved.address || '');
       setResults([]);
       setActiveIndex(-1);
@@ -107,10 +127,12 @@ export default function MapSearch({ bias, onMenuOpen, onSelect, syncMeta }) {
       await onSelect(resolved);
     } catch (resolveError) {
       captureDiagnostic('search.main.resolve', resolveError);
-      setError(resolveError.message);
-      setOpen(true);
+      if (requestGuardRef.current.isCurrent(request)) {
+        setError(resolveError.message);
+        setOpen(true);
+      }
     } finally {
-      setLoading(false);
+      if (requestGuardRef.current.isCurrent(request)) setLoading(false);
     }
   }
 
@@ -126,25 +148,30 @@ export default function MapSearch({ bias, onMenuOpen, onSelect, syncMeta }) {
     setOpen(true);
     setLoading(true);
     setError('');
+    const request = requestGuardRef.current.next();
     try {
       const nextResults = await searchLocation(trimmedQuery, {
         ...bias,
         session: sessionRef.current,
         allowTextSearch: true,
       });
+      if (!requestGuardRef.current.isCurrent(request)) return;
       setResults(nextResults);
       setActiveIndex(-1);
       if (!nextResults.length) setError('No he encontrado esa ubicación.');
     } catch (searchError) {
-      captureDiagnostic('search.main.submit', searchError);
-      setResults([]);
-      setError(searchError.message);
+      if (requestGuardRef.current.isCurrent(request)) {
+        captureDiagnostic('search.main.submit', searchError);
+        setResults([]);
+        setError(searchError.message);
+      }
     } finally {
-      setLoading(false);
+      if (requestGuardRef.current.isCurrent(request)) setLoading(false);
     }
   }
 
   function clearSearch() {
+    requestGuardRef.current.invalidate();
     resetPlaceSearchSession(sessionRef.current);
     setQuery('');
     setResults([]);
@@ -196,7 +223,11 @@ export default function MapSearch({ bias, onMenuOpen, onSelect, syncMeta }) {
               inputRef={inputRef}
               value={query}
               onFocus={() => setOpen(true)}
-              onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
+              onChange={(event) => {
+                requestGuardRef.current.invalidate();
+                setQuery(event.target.value);
+                setOpen(true);
+              }}
               onKeyDown={handleKeyDown}
               placeholder="Buscar en el mapa"
               inputProps={{

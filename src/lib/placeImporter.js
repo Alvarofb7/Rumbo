@@ -7,7 +7,8 @@ function importWithLocalParser(url) {
 }
 
 function isRecoverableImportFailure(error) {
-  return error instanceof TypeError || /failed to fetch|network/i.test(String(error?.message || ''));
+  return error instanceof TypeError || error?.code === 'auth/network-request-failed' ||
+    /failed to fetch|network|conexi[oó]n/i.test(String(error?.message || ''));
 }
 
 export async function importPlaceFromUrl(url, { user } = {}) {
@@ -15,9 +16,9 @@ export async function importPlaceFromUrl(url, { user } = {}) {
   if (!user || user.isLocal || typeof user.getIdToken !== 'function') {
     return importWithLocalParser(normalizedUrl);
   }
-  const token = await user.getIdToken();
-  if (!token) throw new Error('No se pudo obtener una sesión válida para importar el enlace.');
   try {
+    const token = await user.getIdToken();
+    if (!token) throw new Error('No se pudo obtener una sesión válida para importar el enlace.');
     const response = await fetch('/api/import-place', {
       method: 'POST',
       headers: {

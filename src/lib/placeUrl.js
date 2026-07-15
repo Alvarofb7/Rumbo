@@ -1,5 +1,7 @@
-const GOOGLE_MAPS_HOSTS = new Set(['maps.google.com', 'maps.google.es', 'google.com', 'www.google.com', 'google.es', 'www.google.es', 'maps.app.goo.gl']);
-const TRIPADVISOR_HOSTS = new Set(['tripadvisor.com', 'www.tripadvisor.com', 'tripadvisor.es', 'www.tripadvisor.es']);
+const GOOGLE_DOMAIN_SUFFIXES = ['com', 'es', 'co.uk', 'fr', 'de', 'it', 'pt', 'ie', 'nl', 'be', 'ch', 'at', 'ca', 'com.mx', 'com.br', 'com.ar', 'cl', 'co', 'com.pe', 'co.in', 'co.jp', 'com.au', 'co.nz'];
+const TRIPADVISOR_DOMAIN_SUFFIXES = ['com', 'es', 'co.uk', 'fr', 'de', 'it', 'pt', 'ie', 'nl', 'be', 'ch', 'at', 'ca', 'com.mx', 'com.br', 'com.ar', 'cl', 'co', 'com.pe', 'in', 'co.jp', 'com.au', 'co.nz'];
+const GOOGLE_MAPS_HOSTS = new Set(GOOGLE_DOMAIN_SUFFIXES.flatMap((suffix) => [`google.${suffix}`, `www.google.${suffix}`, `maps.google.${suffix}`]));
+const TRIPADVISOR_HOSTS = new Set(TRIPADVISOR_DOMAIN_SUFFIXES.flatMap((suffix) => [`tripadvisor.${suffix}`, `www.tripadvisor.${suffix}`]));
 const INSTAGRAM_HOSTS = new Set(['instagram.com', 'www.instagram.com']);
 
 export function isSupportedPlaceHost(hostname, pathname = '/') {
@@ -7,7 +9,7 @@ export function isSupportedPlaceHost(hostname, pathname = '/') {
   if (host === 'maps.apple.com' || host === 'maps.app.goo.gl') return true;
   if (host === 'goo.gl') return pathname.toLowerCase().startsWith('/maps');
   if (TRIPADVISOR_HOSTS.has(host) || INSTAGRAM_HOSTS.has(host)) return true;
-  return GOOGLE_MAPS_HOSTS.has(host) && (host.startsWith('maps.google.') || host === 'maps.app.goo.gl' || pathname.toLowerCase().startsWith('/maps'));
+  return GOOGLE_MAPS_HOSTS.has(host) && (host.startsWith('maps.google.') || pathname.toLowerCase().startsWith('/maps'));
 }
 
 export function normalizeSupportedPlaceUrl(rawUrl) {

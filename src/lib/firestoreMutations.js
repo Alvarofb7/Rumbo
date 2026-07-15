@@ -9,22 +9,11 @@ export async function commitFirestoreMutation({
   fallbackMessage,
   offline = false,
   queueTimeoutMs = 1500,
+  onlineTimeoutMs = 8000,
 }) {
   incrementPendingWrites();
 
   const mutation = Promise.resolve().then(execute);
-  if (!offline) {
-    try {
-      return await mutation;
-    } catch (error) {
-      captureDiagnostic(diagnosticKey, error, diagnosticContext);
-      setSyncError(error.message || fallbackMessage);
-      throw error;
-    } finally {
-      decrementPendingWrites();
-    }
-  }
-
   return new Promise((resolve, reject) => {
     let completed = false;
     let resolveCompletion;
@@ -36,12 +25,15 @@ export async function commitFirestoreMutation({
       decrementPendingWrites();
       resolve(result);
     };
-    const timeoutId = setTimeout(() => finish({ queued: true, completion }), queueTimeoutMs);
+    const timeoutId = setTimeout(
+      () => finish({ queued: true, completion }),
+      offline ? queueTimeoutMs : onlineTimeoutMs,
+    );
 
     mutation.then(
       (result) => {
         resolveCompletion({ result });
-        finish({ result, queued: true, completion });
+        finish(offline ? { result, queued: true, completion } : { result });
       },
       (error) => {
         captureDiagnostic(diagnosticKey, error, diagnosticContext);

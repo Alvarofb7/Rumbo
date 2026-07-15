@@ -179,12 +179,26 @@ export async function verifyFirebaseIdToken(token, { projectId, fetchImpl = fetc
   return { uid: payload.sub };
 }
 
-export function createBestEffortRateLimiter({ limit = 10, windowMs = 60_000, now = () => Date.now() } = {}) {
+export function createBestEffortRateLimiter({
+  limit = 10,
+  windowMs = 60_000,
+  maxBuckets = 1000,
+  now = () => Date.now(),
+} = {}) {
   const buckets = new Map();
   return {
     check(key) {
       const timestamp = now();
-      const bucket = buckets.get(key) || { count: 0, resetAt: timestamp + windowMs };
+      let bucket = buckets.get(key);
+      if (!bucket && buckets.size >= maxBuckets) {
+        for (const [bucketKey, candidate] of buckets) {
+          if (candidate.resetAt <= timestamp) buckets.delete(bucketKey);
+        }
+        if (buckets.size >= maxBuckets) {
+          return { allowed: false, retryAfter: Math.max(1, Math.ceil(windowMs / 1000)) };
+        }
+      }
+      bucket ||= { count: 0, resetAt: timestamp + windowMs };
       if (bucket.resetAt <= timestamp) Object.assign(bucket, { count: 0, resetAt: timestamp + windowMs });
       bucket.count += 1;
       buckets.set(key, bucket);

@@ -7,6 +7,8 @@ describe('place URL validation', () => {
     expect(normalizeSupportedPlaceUrl('https://www.tripadvisor.es/Restaurant_Review-x')).toContain('tripadvisor.es');
     expect(isSafeSupportedPlaceUrl('https://maps.apple.com/?q=Cafe')).toBe(true);
     expect(getSafeExternalPlaceUrl('maps.apple.com/?q=Cafe')).toBe('https://maps.apple.com/?q=Cafe');
+    expect(isSafeSupportedPlaceUrl('https://www.google.co.uk/maps/place/Cafe')).toBe(true);
+    expect(isSafeSupportedPlaceUrl('https://www.tripadvisor.fr/Restaurant_Review-x')).toBe(true);
   });
 
   it.each(['http://maps.google.com/?q=Cafe', 'https://maps.apple.com:444/', 'https://user@maps.apple.com/', 'https://example.com/', 'https://instagram.com.evil.test/', 'https://maps.google.com.evil.test/', 'https://google.evil/maps'])(

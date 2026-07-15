@@ -90,6 +90,26 @@ describe('Firestore mutations', () => {
     })).rejects.toThrow('permission-denied');
   });
 
+  it('returns a queued outcome when an apparently online write does not settle', async () => {
+    vi.useFakeTimers();
+    const decrementPendingWrites = vi.fn();
+    const outcome = commitFirestoreMutation({
+      execute: () => new Promise(() => {}),
+      incrementPendingWrites: vi.fn(),
+      decrementPendingWrites,
+      setSyncError: vi.fn(),
+      captureDiagnostic: vi.fn(),
+      diagnosticKey: 'sync.create',
+      diagnosticContext: {},
+      fallbackMessage: 'failed',
+      onlineTimeoutMs: 20,
+    });
+    await vi.advanceTimersByTimeAsync(20);
+    await expect(outcome).resolves.toMatchObject({ queued: true });
+    expect(decrementPendingWrites).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
   it('exposes a safe queued completion when the offline write later rejects', async () => {
     vi.useFakeTimers();
     let rejectWrite;

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { getNextActiveIndex, getSearchOptionId } from './MapSearch';
+import { createLatestRequestGuard, getNextActiveIndex, getSearchOptionId } from './MapSearch';
 
 describe('map search combobox behavior', () => {
   it('wraps ArrowUp and ArrowDown navigation deterministically', () => {
@@ -12,6 +12,17 @@ describe('map search combobox behavior', () => {
 
   it('creates stable DOM-safe option ids', () => {
     expect(getSearchOptionId('places', { id: 'ChIJ:123' }, 0)).toBe('places-option-ChIJ-123');
+    expect(getSearchOptionId('places', { name: 'Cafe' }, 1)).not.toBe(getSearchOptionId('places', { name: 'Cafe' }, 2));
+  });
+
+  it('prevents stale search requests from replacing newer results', () => {
+    const guard = createLatestRequestGuard();
+    const first = guard.next();
+    const second = guard.next();
+    expect(guard.isCurrent(first)).toBe(false);
+    expect(guard.isCurrent(second)).toBe(true);
+    guard.invalidate();
+    expect(guard.isCurrent(second)).toBe(false);
   });
 
   it('implements the ARIA combobox/listbox contract and iPhone input sizing', () => {

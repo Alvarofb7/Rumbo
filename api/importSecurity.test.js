@@ -63,6 +63,16 @@ describe('import security', () => {
     expect(limiter.check('user:ip')).toMatchObject({ allowed: false, retryAfter: 10 });
   });
 
+  it('bounds rate-limiter memory and admits new keys after expired buckets are evicted', () => {
+    let timestamp = 1_000;
+    const limiter = createBestEffortRateLimiter({ limit: 2, windowMs: 100, maxBuckets: 2, now: () => timestamp });
+    expect(limiter.check('first').allowed).toBe(true);
+    expect(limiter.check('second').allowed).toBe(true);
+    expect(limiter.check('third').allowed).toBe(false);
+    timestamp = 1_101;
+    expect(limiter.check('third').allowed).toBe(true);
+  });
+
   it('rejects missing authentication before importing', async () => {
     const status = vi.fn().mockReturnThis();
     const response = { status, json: vi.fn(), setHeader: vi.fn() };
