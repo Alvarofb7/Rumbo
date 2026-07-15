@@ -4,7 +4,7 @@ const sourceMatchers = [
   { sourceType: 'apple', patterns: ['maps.apple.com'] },
   { sourceType: 'google', patterns: ['google.com/maps', 'maps.google.', 'goo.gl/maps', 'maps.app.goo.gl'] },
 ];
-import { normalizeSupportedPlaceUrl } from './placeUrl';
+import { getPlaceProviderId, normalizeSupportedPlaceUrl } from './placeUrl';
 
 function cleanTitle(value) {
   let decoded = value || '';
@@ -116,6 +116,7 @@ export function parsePlaceLink(rawUrl, fallbackPosition = null) {
     rating: 0,
     sourceType,
     sourceUrl: normalizedUrl,
+    sourceProviderId: getPlaceProviderId(normalizedUrl),
   };
 }
 import { inferPlaceCategory, normalizePlaceTags } from './placeData';

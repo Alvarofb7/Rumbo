@@ -15,6 +15,17 @@ export class ImportSecurityError extends Error {
   }
 }
 
+export class ImportProviderError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ImportProviderError';
+  }
+}
+
+function isRecoverableDnsFailure(error) {
+  return error?.code === 'ENOTFOUND' || error?.code === 'EAI_AGAIN';
+}
+
 function isPrivateIpv4(address) {
   const parts = address.split('.').map(Number);
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
@@ -45,7 +56,12 @@ export async function assertPublicSupportedUrl(rawUrl, { lookup = dnsLookup } = 
   if (isIP(hostname) || hostname === 'localhost' || hostname.endsWith('.localhost')) {
     throw new ImportSecurityError(403, 'El host del enlace no es público.');
   }
-  const records = await lookup(hostname, { all: true, verbatim: true });
+  let records;
+  try { records = await lookup(hostname, { all: true, verbatim: true }); }
+  catch (error) {
+    if (isRecoverableDnsFailure(error)) throw new ImportProviderError('El sitio de origen no está disponible.');
+    throw error;
+  }
   if (!records.length || records.some(({ address }) => !isPublicIp(address))) {
     throw new ImportSecurityError(403, 'El host del enlace no es público.');
   }
@@ -90,11 +106,9 @@ export async function fetchSafeHtml(rawUrl, {
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     for (let redirects = 0; redirects <= maxRedirects; redirects += 1) {
-      const response = await fetchImpl(currentUrl, {
-        redirect: 'manual',
-        signal: controller.signal,
-        headers: { accept: 'text/html,application/xhtml+xml', 'accept-language': 'es,en;q=0.8', 'user-agent': 'RumboPersonalApp/1.0' },
-      });
+      let response;
+      try { response = await fetchImpl(currentUrl, { redirect: 'manual', signal: controller.signal, headers: { accept: 'text/html,application/xhtml+xml', 'accept-language': 'es,en;q=0.8', 'user-agent': 'RumboPersonalApp/1.0' } }); }
+      catch (error) { if (error instanceof TypeError) throw new ImportProviderError('El sitio de origen no está disponible.'); throw error; }
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get('location');
         if (!location) throw new ImportSecurityError(502, 'El enlace redirige a un destino no válido.');
@@ -102,7 +116,10 @@ export async function fetchSafeHtml(rawUrl, {
         currentUrl = await assertPublicSupportedUrl(new URL(location, currentUrl).toString(), { lookup });
         continue;
       }
-      if (!response.ok) throw new ImportSecurityError(502, 'El sitio de origen no respondió correctamente.');
+      if (!response.ok) {
+        if (response.status >= 500) throw new ImportProviderError('El sitio de origen no está disponible.');
+        throw new ImportSecurityError(502, 'El sitio de origen no respondió correctamente.');
+      }
       const contentLength = Number(response.headers.get('content-length'));
       if (Number.isFinite(contentLength) && contentLength > maxBytes) {
         await response.body?.cancel?.();
@@ -121,6 +138,46 @@ export async function fetchSafeHtml(rawUrl, {
     clearTimeout(timeoutId);
   }
   throw new ImportSecurityError(502, 'No se pudo resolver el enlace.');
+}
+
+export async function fetchFixedJson(fixedOrigin, pathname, {
+  fetchImpl = fetch,
+  lookup = dnsLookup,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+  maxBytes = MAX_RESPONSE_BYTES,
+  headers = {},
+  method = 'GET',
+  body,
+} = {}) {
+  const origin = new URL(fixedOrigin);
+  if (origin.protocol !== 'https:' || origin.username || origin.password || origin.port) throw new ImportSecurityError(400, 'El origen del proveedor no es válido.');
+  const url = new URL(pathname, origin);
+  if (url.origin !== origin.origin) throw new ImportSecurityError(400, 'El origen del proveedor no es válido.');
+  let records;
+  try { records = await lookup(origin.hostname, { all: true, verbatim: true }); }
+  catch (error) {
+    if (isRecoverableDnsFailure(error)) throw new ImportProviderError('El proveedor no está disponible.');
+    throw error;
+  }
+  if (!records.length || records.some(({ address }) => !isPublicIp(address))) throw new ImportSecurityError(403, 'El host del enlace no es público.');
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    let response;
+    try { response = await fetchImpl(url.toString(), { method, body, signal: controller.signal, redirect: 'manual', headers: { accept: 'application/json', ...headers } }); }
+    catch (error) {
+      if (error.name === 'AbortError') throw new ImportSecurityError(502, 'La importación del enlace agotó el tiempo de espera.');
+      if (error instanceof TypeError) throw new ImportProviderError('El proveedor no está disponible.');
+      throw error;
+    }
+    if ([301, 302, 303, 307, 308].includes(response.status) || (response.status >= 400 && response.status < 500)) throw new ImportSecurityError(502, 'El proveedor no respondió correctamente.');
+    if (!response.ok) throw new ImportProviderError('El proveedor no está disponible.');
+    if (!(response.headers.get('content-type') || '').toLowerCase().startsWith('application/json')) throw new ImportSecurityError(415, 'El proveedor no devolvió JSON compatible.');
+    try { return JSON.parse(await readLimitedBody(response, maxBytes)); } catch (error) {
+      if (error instanceof SyntaxError) throw new ImportSecurityError(502, 'El proveedor no devolvió JSON válido.');
+      throw error;
+    }
+  } finally { clearTimeout(timeoutId); }
 }
 
 function base64UrlToBytes(value) {

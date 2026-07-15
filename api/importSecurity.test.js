@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 import { describe, expect, it, vi } from 'vitest';
-import { ImportSecurityError, assertPublicSupportedUrl, clearFirebaseJwksCache, createBestEffortRateLimiter, fetchSafeHtml, isPublicIp, verifyFirebaseIdToken } from './importSecurity.js';
+import { ImportProviderError, ImportSecurityError, assertPublicSupportedUrl, clearFirebaseJwksCache, createBestEffortRateLimiter, fetchFixedJson, fetchSafeHtml, isPublicIp, MAX_RESPONSE_BYTES, REQUEST_TIMEOUT_MS, verifyFirebaseIdToken } from './importSecurity.js';
 import { createImportHandler } from './import-place.js';
 
 const publicLookup = vi.fn(async () => [{ address: '8.8.8.8', family: 4 }]);
@@ -21,6 +21,77 @@ describe('import security', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('limits redirects to four and keeps stable errors free of hostile URL data', async () => {
+    const fetchImpl = vi.fn(async () => new Response('', { status: 302, headers: { location: 'https://maps.google.com/?q=secret-token' } }));
+    await expect(fetchSafeHtml('https://maps.google.com/?q=Cafe', { fetchImpl, lookup: publicLookup, maxRedirects: 4 })).rejects.toMatchObject({ status: 502, message: 'El enlace supera el máximo de redirecciones.' });
+    expect(fetchImpl).toHaveBeenCalledTimes(5);
+  });
+
+  it('fetches JSON only from server-owned public fixed origins', async () => {
+    await expect(fetchFixedJson('https://places.googleapis.com', '/v1/places', {
+      lookup: publicLookup,
+      fetchImpl: async () => new Response(JSON.stringify({ places: [] }), { headers: { 'content-type': 'application/json' } }),
+    })).resolves.toEqual({ places: [] });
+    await expect(fetchFixedJson('https://places.googleapis.com', 'https://evil.test/data', { lookup: publicLookup })).rejects.toMatchObject({ status: 400 });
+  });
+
+  it.each([
+    ['network failure', async () => { throw new TypeError('offline'); }, ImportProviderError],
+    ['upstream 5xx', async () => new Response('', { status: 503 }), ImportProviderError],
+    ['malformed JSON', async () => new Response('{', { headers: { 'content-type': 'application/json' } }), ImportSecurityError],
+    ['invalid redirect', async () => new Response('', { status: 302 }), ImportSecurityError],
+    ['invalid non-recoverable status', async () => new Response('', { status: 401 }), ImportSecurityError],
+  ])('classifies fixed-provider %s explicitly', async (_name, fetchImpl, ErrorType) => {
+    await expect(fetchFixedJson('https://places.googleapis.com', '/v1/places', { lookup: publicLookup, fetchImpl })).rejects.toBeInstanceOf(ErrorType);
+  });
+
+  it.each([['transport', async () => { throw new TypeError('offline'); }, ImportProviderError], ['post-fetch', async () => ({ ok: true, status: 200, headers: { get: () => { throw new TypeError('bug'); } } }), TypeError]])('recovers only transport %s TypeErrors', async (_name, fetchImpl, ErrorType) => {
+    await expect(fetchSafeHtml('https://maps.google.com/?q=Cafe', { lookup: publicLookup, fetchImpl })).rejects.toBeInstanceOf(ErrorType);
+  });
+
+  it.each([
+    ['HTML', (lookup) => fetchSafeHtml('https://maps.google.com/?q=Cafe', { lookup, fetchImpl: async () => new Response('', { headers: { 'content-type': 'text/html' } }) })],
+    ['fixed JSON', (lookup) => fetchFixedJson('https://places.googleapis.com', '/v1/places', { lookup, fetchImpl: async () => new Response('{}', { headers: { 'content-type': 'application/json' } }) })],
+  ])('classifies known DNS transport failures as recoverable at the %s boundary', async (_name, request) => {
+    for (const code of ['ENOTFOUND', 'EAI_AGAIN']) {
+      const error = Object.assign(new Error(code), { code });
+      await expect(request(async () => { throw error; })).rejects.toBeInstanceOf(ImportProviderError);
+    }
+    const programmingError = new Error('lookup bug');
+    await expect(request(async () => { throw programmingError; })).rejects.toBe(programmingError);
+  });
+
+  it('keeps fixed JSON post-fetch TypeErrors hard while recovering only transport TypeErrors and 5xx', async () => {
+    const request = (fetchImpl) => fetchFixedJson('https://places.googleapis.com', '/v1/places', { lookup: publicLookup, fetchImpl });
+    await expect(request(async () => { throw new TypeError('offline'); })).rejects.toBeInstanceOf(ImportProviderError);
+    await expect(request(async () => new Response('', { status: 503 }))).rejects.toBeInstanceOf(ImportProviderError);
+    await expect(request(async () => ({ ok: true, status: 200, headers: { get: () => { throw new TypeError('headers bug'); } } }))).rejects.toBeInstanceOf(TypeError);
+  });
+  it.each(['https://user:secret@places.googleapis.com', 'https://places.googleapis.com:8443'])('rejects fixed provider origins with credentials or custom ports', async (origin) => {
+    await expect(fetchFixedJson(origin, '/v1/places', { lookup: publicLookup })).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('keeps the required nine-second and one-MiB defaults', () => {
+    expect(REQUEST_TIMEOUT_MS).toBe(9000);
+    expect(MAX_RESPONSE_BYTES).toBe(1024 * 1024);
+  });
+
+  it('turns an aborted bounded fetch into a stable timeout failure', async () => {
+    const fetchImpl = (_url, { signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(Object.assign(new Error('abort'), { name: 'AbortError' }))));
+    await expect(fetchFixedJson('https://places.googleapis.com', '/v1/places', { lookup: publicLookup, fetchImpl, timeoutMs: 1 })).rejects.toMatchObject({ status: 502, message: 'La importación del enlace agotó el tiempo de espera.' });
+  });
+
+  it('redacts raw upstream error text from the handler log and stable response', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const status = vi.fn().mockReturnThis();
+    const response = { status, json: vi.fn(), setHeader: vi.fn() };
+    const handler = createImportHandler({ rateLimiter: { check: () => ({ allowed: true, retryAfter: 1 }) }, verifyToken: async () => ({ uid: 'user' }), buildPlace: async () => { throw new Error('upstream-secret=leak'); } });
+    await handler({ method: 'POST', headers: { authorization: 'Bearer token' }, body: {} }, response);
+    expect(error).toHaveBeenCalledWith(expect.not.stringContaining('upstream-secret=leak'));
+    expect(response.json).toHaveBeenCalledWith({ error: 'No se pudo consultar el enlace en este momento.' });
+    error.mockRestore();
+  });
+
   it('enforces HTML content and response-size boundaries', async () => {
     await expect(fetchSafeHtml('https://maps.google.com/?q=Cafe', {
       lookup: publicLookup,
@@ -34,7 +105,7 @@ describe('import security', () => {
     await expect(fetchSafeHtml('https://maps.google.com/?q=Cafe', {
       lookup: publicLookup,
       fetchImpl: async () => new Response('unavailable', { status: 503, headers: { 'content-type': 'text/html' } }),
-    })).rejects.toMatchObject({ status: 502 });
+    })).rejects.toBeInstanceOf(ImportProviderError);
   });
 
   it('cancels an oversized stream and rejects non-global IPv6 records', async () => {
