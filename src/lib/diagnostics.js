@@ -1,3 +1,5 @@
+import { readStorageJson, removeStorageValue, writeStorageJson } from './storage';
+
 const diagnosticsKey = 'rumbo.diagnostics.v1';
 const breadcrumbsKey = 'rumbo.breadcrumbs.v1';
 const diagnosticsMaxAge = 7 * 24 * 60 * 60 * 1000;
@@ -40,49 +42,23 @@ function sanitizeContext(context = {}) {
 }
 
 function readStoredDiagnostics() {
-  if (typeof localStorage === 'undefined') return [];
-
-  try {
-    const stored = JSON.parse(localStorage.getItem(diagnosticsKey));
-    if (!Array.isArray(stored)) return [];
-    const cutoff = Date.now() - diagnosticsMaxAge;
-    return stored.filter((item) => Date.parse(item.timestamp) >= cutoff).slice(0, diagnosticsLimit);
-  } catch {
-    return [];
-  }
+  const stored = readStorageJson(diagnosticsKey, [], { validate: Array.isArray });
+  const cutoff = Date.now() - diagnosticsMaxAge;
+  return stored.filter((item) => Date.parse(item.timestamp) >= cutoff).slice(0, diagnosticsLimit);
 }
 
 function readStoredBreadcrumbs() {
-  if (typeof localStorage === 'undefined') return [];
-
-  try {
-    const stored = JSON.parse(localStorage.getItem(breadcrumbsKey));
-    if (!Array.isArray(stored)) return [];
-    const cutoff = Date.now() - breadcrumbsMaxAge;
-    return stored.filter((item) => Date.parse(item.timestamp) >= cutoff).slice(0, breadcrumbsLimit);
-  } catch {
-    return [];
-  }
+  const stored = readStorageJson(breadcrumbsKey, [], { validate: Array.isArray });
+  const cutoff = Date.now() - breadcrumbsMaxAge;
+  return stored.filter((item) => Date.parse(item.timestamp) >= cutoff).slice(0, breadcrumbsLimit);
 }
 
 function writeStoredDiagnostics(items) {
-  if (typeof localStorage === 'undefined') return;
-
-  try {
-    localStorage.setItem(diagnosticsKey, JSON.stringify(items.slice(0, diagnosticsLimit)));
-  } catch {
-    return;
-  }
+  writeStorageJson(diagnosticsKey, items.slice(0, diagnosticsLimit));
 }
 
 function writeStoredBreadcrumbs(items) {
-  if (typeof localStorage === 'undefined') return;
-
-  try {
-    localStorage.setItem(breadcrumbsKey, JSON.stringify(items.slice(0, breadcrumbsLimit)));
-  } catch {
-    return;
-  }
+  writeStorageJson(breadcrumbsKey, items.slice(0, breadcrumbsLimit));
 }
 
 function normalizeError(error) {
@@ -158,13 +134,8 @@ export function recordBreadcrumb(area, context = {}) {
 }
 
 export function clearDiagnostics() {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.removeItem(diagnosticsKey);
-    localStorage.removeItem(breadcrumbsKey);
-  } catch {
-    return;
-  }
+  removeStorageValue(diagnosticsKey);
+  removeStorageValue(breadcrumbsKey);
 }
 
 export function buildDiagnosticsReport() {
@@ -233,5 +204,12 @@ export function installGlobalDiagnostics() {
   });
   window.addEventListener('unhandledrejection', (event) => {
     captureDiagnostic('window.unhandledrejection', event.reason);
+  });
+  window.addEventListener('rumbo:storage-error', (event) => {
+    const issue = event.detail || {};
+    if (issue.key === diagnosticsKey || issue.key === breadcrumbsKey) return;
+    captureDiagnostic(`storage.${issue.operation || 'unknown'}`, new Error(issue.message || 'Storage unavailable'), {
+      key: issue.key || '',
+    });
   });
 }

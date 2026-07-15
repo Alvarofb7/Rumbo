@@ -12,6 +12,7 @@ import {
   localFallbackEnabled,
   signInWithGoogleProvider,
 } from '../lib/firebase';
+import { readStorageJson, removeStorageValue, writeStorageJson } from '../lib/storage';
 
 const AuthContext = createContext(null);
 const localUserKey = 'rumbo.localUser';
@@ -34,8 +35,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!isFirebaseConfigured || !auth) {
-      const stored = localStorage.getItem(localUserKey);
-      setUser(stored ? JSON.parse(stored) : null);
+      setUser(readStorageJson(localUserKey, null, { validate: (value) => Boolean(value?.uid), quarantine: false }));
       setLoading(false);
       return undefined;
     }
@@ -59,7 +59,7 @@ export function AuthProvider({ children }) {
 
         if (!localFallbackEnabled) throw new Error('Firebase no está configurado.');
         const localUser = buildLocalUser(email);
-        localStorage.setItem(localUserKey, JSON.stringify(localUser));
+        if (!writeStorageJson(localUserKey, localUser)) throw new Error('No se ha podido guardar la sesión local.');
         setUser(localUser);
         return localUser;
       },
@@ -72,7 +72,7 @@ export function AuthProvider({ children }) {
 
         if (!localFallbackEnabled) throw new Error('Firebase no está configurado.');
         const localUser = buildLocalUser(email);
-        localStorage.setItem(localUserKey, JSON.stringify(localUser));
+        if (!writeStorageJson(localUserKey, localUser)) throw new Error('No se ha podido guardar la sesión local.');
         setUser(localUser);
         return localUser;
       },
@@ -86,14 +86,14 @@ export function AuthProvider({ children }) {
         if (!localFallbackEnabled) throw new Error('Firebase no está configurado.');
         const localUser = buildLocalUser('google.demo@rumbo.local');
         localUser.displayName = 'Google demo';
-        localStorage.setItem(localUserKey, JSON.stringify(localUser));
+        if (!writeStorageJson(localUserKey, localUser)) throw new Error('No se ha podido guardar la sesión local.');
         setUser(localUser);
         return localUser;
       },
       async continueDemo() {
         const localUser = buildLocalUser();
         localUser.displayName = 'Modo demo';
-        localStorage.setItem(localUserKey, JSON.stringify(localUser));
+        if (!writeStorageJson(localUserKey, localUser)) throw new Error('No se ha podido guardar la sesión local.');
         setUser(localUser);
         return localUser;
       },
@@ -101,7 +101,7 @@ export function AuthProvider({ children }) {
         if (isFirebaseConfigured && auth && !user?.isLocal) {
           await firebaseSignOut(auth);
         }
-        localStorage.removeItem(localUserKey);
+        if (user?.isLocal && !removeStorageValue(localUserKey)) throw new Error('No se ha podido cerrar la sesión local.');
         setUser(null);
       },
       clearError() {

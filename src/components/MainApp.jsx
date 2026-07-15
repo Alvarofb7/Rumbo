@@ -4,16 +4,10 @@ import {
   Badge,
   Box,
   Button,
-  CircularProgress,
-  ClickAwayListener,
   Divider,
   Drawer,
   Fab,
   IconButton,
-  InputBase,
-  List,
-  ListItemButton,
-  ListItemText,
   Paper,
   Stack,
   Tooltip,
@@ -23,10 +17,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
 import CloseIcon from '@mui/icons-material/Close';
-import FilterListIcon from '@mui/icons-material/FilterList';
-import MenuIcon from '@mui/icons-material/Menu';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
-import SearchIcon from '@mui/icons-material/Search';
 import TuneIcon from '@mui/icons-material/Tune';
 import { useTheme } from '@mui/material/styles';
 import { demoInbox, demoPlaces } from '../data/demoData';
@@ -36,7 +27,6 @@ import { usePlaceFilters } from '../hooks/usePlaceFilters';
 import { useUserLocation } from '../hooks/useUserLocation';
 import {
   createPlaceSearchSession,
-  resetPlaceSearchSession,
   resolveGooglePlaceAt,
   resolveGooglePlaceId,
   resolveLocationSuggestion,
@@ -52,11 +42,14 @@ import FilterDrawer from './filters/FilterDrawer';
 import InboxPanel from './panels/InboxPanel';
 import LinkImportDialog from './dialogs/LinkImportDialog';
 import MapPanel from './map/MapPanel';
+import MapSearch from './map/MapSearch';
 import PlaceDialog from './dialogs/PlaceDialog';
 import PlacesPanel from './panels/PlacesPanel';
 import GooglePlaceCard from './cards/GooglePlaceCard';
 import SelectedPlaceCard from './cards/SelectedPlaceCard';
 import AppMenuDrawer from './navigation/AppMenuDrawer';
+import AppToast, { createToast } from './feedback/AppToast';
+import { LocationConsentDialog } from './privacy/LocationPrivacy';
 
 const emptyPlace = {
   name: '',
@@ -148,10 +141,20 @@ function DataDrawer({ open, title, subtitle, isDesktop, onClose, children, fitCo
 }
 
 export default function MainApp() {
-  const { user } = useAuth();
+  const auth = useAuth();
+  const { user } = auth;
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
-  const { position, status: locationStatus, error: locationError, setManualPosition, requestLivePosition } = useUserLocation();
+  const {
+    position,
+    status: locationStatus,
+    error: locationError,
+    consent: locationConsent,
+    setManualPosition,
+    requestLivePosition,
+    enableLocation,
+    disableLocation,
+  } = useUserLocation();
   const placesStore = useUserCollection(user, 'places', demoPlaces, {
     normalizeItem: sanitizePlaceRecord,
     getMigration: getPlaceRecordMigration,
@@ -167,11 +170,6 @@ export default function MainApp() {
   const [listSort, setListSort] = useState('nearest');
   const [placeDialogOpen, setPlaceDialogOpen] = useState(false);
   const [editingPlace, setEditingPlace] = useState(null);
-  const [mapSearchOpen, setMapSearchOpen] = useState(false);
-  const [mapSearchQuery, setMapSearchQuery] = useState('');
-  const [mapSearchResults, setMapSearchResults] = useState([]);
-  const [mapSearchLoading, setMapSearchLoading] = useState(false);
-  const [mapSearchError, setMapSearchError] = useState('');
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -180,8 +178,8 @@ export default function MainApp() {
   const [googlePlacePreview, setGooglePlacePreview] = useState(null);
   const [googlePlaceLoading, setGooglePlaceLoading] = useState(false);
   const [deletedPlace, setDeletedPlace] = useState(null);
-  const [toast, setToast] = useState('');
-  const mapSearchSessionRef = useRef(createPlaceSearchSession());
+  const [toast, setToast] = useState(null);
+  const [locationConsentOpen, setLocationConsentOpen] = useState(false);
   const googlePlaceRequestRef = useRef(0);
 
   const places = placesStore.items;
@@ -216,6 +214,7 @@ export default function MainApp() {
   const syncState = useMemo(() => {
     const states = [placesStore.syncState, inboxStore.syncState];
     return (
+      states.find((state) => state.status === 'reconnecting') ||
       states.find((state) => state.status === 'error') ||
       states.find((state) => state.status === 'offline') ||
       states.find((state) => state.status === 'pending') ||
@@ -226,6 +225,7 @@ export default function MainApp() {
   const syncMeta = {
     synced: { label: 'Sincronizado', color: 'success.main' },
     pending: { label: 'Guardando cambios', color: 'warning.main' },
+    reconnecting: { label: 'Reconectando la sincronización', color: 'warning.main' },
     offline: { label: 'Sin conexión; cambios en cola', color: 'warning.main' },
     error: { label: 'Error de sincronización', color: 'error.main' },
     local: { label: 'Modo local', color: 'warning.main' },
@@ -235,57 +235,15 @@ export default function MainApp() {
     if (!toast) return undefined;
 
     const timeoutId = window.setTimeout(() => {
-      setToast('');
+      setToast(null);
       setDeletedPlace(null);
     }, 5000);
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
 
-  useEffect(() => {
-    if (!mapSearchOpen) {
-      setMapSearchLoading(false);
-      return undefined;
-    }
-
-    const query = mapSearchQuery.trim();
-    if (query.length < 3) {
-      setMapSearchResults([]);
-      setMapSearchError('');
-      setMapSearchLoading(false);
-      return undefined;
-    }
-
-    let ignore = false;
-    const timeoutId = window.setTimeout(async () => {
-      setMapSearchLoading(true);
-      setMapSearchError('');
-
-      try {
-        const results = await searchLocation(query, {
-          ...mapSearchBias,
-          session: mapSearchSessionRef.current,
-          allowTextSearch: true,
-        });
-        if (!ignore) {
-          setMapSearchResults(results);
-          if (!results.length) setMapSearchError('No he encontrado esa ubicación.');
-        }
-      } catch (error) {
-        if (!ignore) {
-          captureDiagnostic('search.main.suggestions', error);
-          setMapSearchResults([]);
-          setMapSearchError(error.message);
-        }
-      } finally {
-        if (!ignore) setMapSearchLoading(false);
-      }
-    }, 350);
-
-    return () => {
-      ignore = true;
-      window.clearTimeout(timeoutId);
-    };
-  }, [mapSearchBias, mapSearchOpen, mapSearchQuery]);
+  function showToast(message, severity = 'success', options = {}) {
+    setToast(createToast(message, severity, options));
+  }
 
   function openCreatePlace(prefill = null) {
     googlePlaceRequestRef.current += 1;
@@ -343,11 +301,13 @@ export default function MainApp() {
   }
 
   async function buildPlacePayload(place, options = {}) {
+    const placeRecord = { ...place };
+    delete placeRecord.inboxId;
     const allowCurrentFallback = options.allowCurrentFallback ?? (!place.address?.trim() && !place.sourceUrl);
-    let coordinates = hasValidCoordinates(place)
+    let coordinates = hasValidCoordinates(placeRecord)
       ? {
-          lat: Number(place.lat),
-          lng: Number(place.lng),
+          lat: Number(placeRecord.lat),
+          lng: Number(placeRecord.lng),
         }
       : { lat: Number.NaN, lng: Number.NaN };
     let approximate = false;
@@ -371,15 +331,15 @@ export default function MainApp() {
 
     return {
       payload: sanitizePlaceRecord({
-        ...place,
-        address: place.address || locationResult?.address || '',
-        zone: place.zone || locationResult?.zone || '',
+        ...placeRecord,
+        address: placeRecord.address || locationResult?.address || '',
+        zone: placeRecord.zone || locationResult?.zone || '',
         lat: coordinates.lat,
         lng: coordinates.lng,
-        category: place.category && place.category !== 'other' ? place.category : locationResult?.category || place.category || 'other',
-        providerType: place.providerType || locationResult?.providerType || '',
-        rating: Number(place.rating || 0),
-        tags: place.tags || [],
+        category: placeRecord.category && placeRecord.category !== 'other' ? placeRecord.category : locationResult?.category || placeRecord.category || 'other',
+        providerType: placeRecord.providerType || locationResult?.providerType || '',
+        rating: Number(placeRecord.rating || 0),
+        tags: placeRecord.tags || [],
       }),
       approximate,
     };
@@ -394,7 +354,7 @@ export default function MainApp() {
     setPlaceDialogOpen(false);
     setPlacesOpen(false);
     setReviewOpen(false);
-    setToast(message);
+    showToast(message, 'info');
   }
 
   async function handleSavePlace(place) {
@@ -406,7 +366,7 @@ export default function MainApp() {
       result = await buildPlacePayload(place);
     } catch (error) {
       captureDiagnostic('place.save.location', error, { mode });
-      setToast(error.message);
+      showToast(error.message, 'error');
       return false;
     }
 
@@ -418,7 +378,7 @@ export default function MainApp() {
       if (payload.id) {
         setSelectedPlaceId(duplicate.id);
         if (hasValidCoordinates(duplicate)) setMapCenter({ lat: Number(duplicate.lat), lng: Number(duplicate.lng) });
-        setToast(`Ya existe un lugar parecido: ${duplicate.name}.`);
+        showToast(`Ya existe un lugar parecido: ${duplicate.name}.`, 'warning');
         return false;
       }
 
@@ -426,14 +386,20 @@ export default function MainApp() {
       return true;
     }
 
-    if (payload.id) {
-      await placesStore.updateItem(payload.id, payload);
-      setSelectedPlaceId(payload.id);
-      setToast(`Lugar actualizado${approximate ? ' con ubicación aproximada' : ''}.`);
-    } else {
-      const created = await placesStore.addItem(payload);
-      setSelectedPlaceId(created.id);
-      setToast(`Lugar guardado${approximate ? ' con ubicación aproximada' : ''}.`);
+    try {
+      if (payload.id) {
+        const updated = await placesStore.updateItem(payload.id, payload);
+        setSelectedPlaceId(payload.id);
+        showToast(updated?.queued ? 'Cambio en cola hasta recuperar la conexión.' : `Lugar actualizado${approximate ? ' con ubicación aproximada' : ''}.`, updated?.queued || approximate ? 'info' : 'success');
+      } else {
+        const created = await placesStore.addItem(payload);
+        setSelectedPlaceId(created.id);
+        showToast(created.queued ? 'Cambio en cola hasta recuperar la conexión.' : `Lugar guardado${approximate ? ' con ubicación aproximada' : ''}.`, created.queued || approximate ? 'info' : 'success');
+      }
+    } catch (error) {
+      captureDiagnostic('place.save.persist', error, { mode });
+      showToast(error.message || 'No se ha podido guardar el lugar.', 'error');
+      return false;
     }
 
     setMapCenter({ lat: payload.lat, lng: payload.lng });
@@ -448,19 +414,38 @@ export default function MainApp() {
     const place = places.find((candidate) => candidate.id === placeId);
     if (!place) return;
     recordBreadcrumb('place.delete.started');
-    await placesStore.deleteItem(placeId);
+    let deletion;
+    try { deletion = await placesStore.deleteItem(placeId); } catch (error) { showToast(error.message || 'No se ha podido eliminar el lugar.', 'error'); return; }
     if (selectedPlaceId === placeId) setSelectedPlaceId(null);
+    if (deletion?.queued) {
+      showToast('Eliminación en cola hasta recuperar la conexión.', 'info');
+      return;
+    }
     setDeletedPlace(place);
-    setToast('Lugar eliminado.');
+    showToast('Lugar eliminado.', 'success', { undoDelete: true });
     recordBreadcrumb('place.delete.queued');
   }
 
   async function undoDeletePlace() {
     if (!deletedPlace) return;
-    const restored = await placesStore.addItem(deletedPlace);
+    let restored;
+    try { restored = await placesStore.addItem(deletedPlace); } catch (error) { showToast(error.message || 'No se ha podido recuperar el lugar.', 'error'); return; }
+    if (restored.queued) {
+      showToast('Recuperación en cola hasta recuperar la conexión.', 'info');
+      restored.completion?.then(({ error }) => {
+        if (error) {
+          showToast(error.message || 'No se ha podido recuperar el lugar.', 'error', { undoDelete: true });
+          return;
+        }
+        setDeletedPlace((pending) => (pending?.id === deletedPlace.id ? null : pending));
+        setSelectedPlaceId(restored.id);
+        showToast('Lugar recuperado.');
+      });
+      return;
+    }
     setDeletedPlace(null);
     setSelectedPlaceId(restored.id);
-    setToast('Lugar recuperado.');
+    showToast('Lugar recuperado.');
   }
 
   async function handleQuickSaveGooglePlace(place) {
@@ -476,7 +461,7 @@ export default function MainApp() {
 
   async function handleImportLink(url) {
     recordBreadcrumb('link.import.started');
-    const candidate = await importPlaceFromUrl(url);
+    const candidate = await importPlaceFromUrl(url, auth);
     const duplicatePlace = findDuplicatePlace(candidate, places);
     if (duplicatePlace) {
       recordBreadcrumb('link.import.duplicate', { target: 'places' });
@@ -490,14 +475,14 @@ export default function MainApp() {
       recordBreadcrumb('link.import.duplicate', { target: 'inbox' });
       setLinkDialogOpen(false);
       openReview();
-      setToast(`Ese enlace ya está en revisión: ${duplicateInboxItem.title || duplicateInboxItem.name}.`);
+      showToast(`Ese enlace ya está en revisión: ${duplicateInboxItem.title || duplicateInboxItem.name}.`, 'warning');
       return;
     }
 
     await inboxStore.addItem(candidate);
     setLinkDialogOpen(false);
     openReview();
-    setToast('Enlace analizado. Revísalo antes de guardarlo.');
+    showToast('Enlace analizado. Revísalo antes de guardarlo.', 'info');
     recordBreadcrumb('link.import.completed', { sourceType: candidate.sourceType || 'unknown' });
   }
 
@@ -523,7 +508,7 @@ export default function MainApp() {
       result = await buildPlacePayload(place, { allowCurrentFallback: false });
     } catch (error) {
       captureDiagnostic('inbox.save.location', error);
-      setToast(error.message);
+      showToast(error.message, 'error');
       return;
     }
 
@@ -531,17 +516,26 @@ export default function MainApp() {
     const duplicate = findDuplicatePlace(payload, places);
     if (duplicate) {
       recordBreadcrumb('inbox.save.duplicate');
-      await inboxStore.deleteItem(item.id);
-      openDuplicatePlace(duplicate, `Ya tenías guardado ${duplicate.name}. He quitado la recomendación duplicada.`);
+      openDuplicatePlace(duplicate, `Ya tenías guardado ${duplicate.name}. La recomendación sigue en revisión.`);
       return;
     }
 
-    const created = await placesStore.addItem(payload);
-    await inboxStore.deleteItem(item.id);
+    let created;
+    try {
+      created = await inboxStore.convertInboxToPlace(item.id, payload, placesStore);
+    } catch (error) {
+      captureDiagnostic('inbox.save.persist', error);
+      showToast(error.message || 'No se ha podido guardar la recomendación.', 'error');
+      return;
+    }
+    if (created.queued) {
+      showToast('Conversión en cola hasta recuperar la conexión.', 'info');
+      return;
+    }
     setSelectedPlaceId(created.id);
     setMapCenter({ lat: payload.lat, lng: payload.lng });
     setReviewOpen(false);
-    setToast(`Recomendación guardada${approximate ? ' con ubicación aproximada' : ''}.`);
+    showToast(`Recomendación guardada${approximate ? ' con ubicación aproximada' : ''}.`, approximate ? 'info' : 'success');
   }
 
   async function handleEditInboxItem(item) {
@@ -563,9 +557,46 @@ export default function MainApp() {
     });
   }
 
+  async function handleSaveEditedInboxItem(place) {
+    let result;
+
+    try {
+      result = await buildPlacePayload(place, { allowCurrentFallback: false });
+    } catch (error) {
+      captureDiagnostic('inbox.edit.location', error);
+      showToast(error.message, 'error');
+      return false;
+    }
+
+    const { payload, approximate } = result;
+    const duplicate = findDuplicatePlace(payload, places);
+    if (duplicate) {
+      openDuplicatePlace(duplicate, `Ya tenías guardado ${duplicate.name}. La recomendación sigue en revisión.`);
+      return false;
+    }
+
+    try {
+      const created = await inboxStore.convertInboxToPlace(place.inboxId, payload, placesStore);
+      if (created.queued) {
+        showToast('Conversión en cola hasta recuperar la conexión.', 'info');
+        return true;
+      }
+      setSelectedPlaceId(created.id);
+      setMapCenter({ lat: payload.lat, lng: payload.lng });
+      setPlaceDialogOpen(false);
+      setReviewOpen(false);
+      showToast(`Recomendación guardada${approximate ? ' con ubicación aproximada' : ''}.`, approximate ? 'info' : 'success');
+      return true;
+    } catch (error) {
+      captureDiagnostic('inbox.edit.persist', error);
+      showToast(error.message || 'No se ha podido guardar la recomendación.', 'error');
+      return false;
+    }
+  }
+
   async function handleDiscardInboxItem(itemId) {
-    await inboxStore.deleteItem(itemId);
-    setToast('Recomendación descartada.');
+    try { await inboxStore.deleteItem(itemId); } catch (error) { showToast(error.message || 'No se ha podido descartar la recomendación.', 'error'); return; }
+    showToast('Recomendación descartada.');
   }
 
   async function handleSearchSelect(result) {
@@ -576,70 +607,10 @@ export default function MainApp() {
     setMapCenter({ lat: result.lat, lng: result.lng });
     if (locationStatus !== 'ready') {
       setManualPosition({ lat: result.lat, lng: result.lng, label: result.name });
-      setToast(`${result.name} será tu referencia de cercanía.`);
+      showToast(`${result.name} será tu referencia de cercanía.`, 'info');
     }
     setPlacesOpen(false);
     setReviewOpen(false);
-  }
-
-  async function handleInlineSearchSelect(result) {
-    setMapSearchLoading(true);
-    setMapSearchError('');
-
-    try {
-      const resolved = await resolveLocationSuggestion(result, mapSearchSessionRef.current);
-      setMapSearchQuery(resolved.name || resolved.address || '');
-      setMapSearchResults([]);
-      setMapSearchOpen(false);
-      await handleSearchSelect(resolved);
-    } catch (error) {
-      captureDiagnostic('search.main.resolve', error);
-      setMapSearchError(error.message);
-      setMapSearchOpen(true);
-    } finally {
-      setMapSearchLoading(false);
-    }
-  }
-
-  async function handleInlineSearchSubmit(event) {
-    event.preventDefault();
-    const query = mapSearchQuery.trim();
-    if (!query) return;
-
-    if (query.length < 3) {
-      setMapSearchOpen(true);
-      setMapSearchError('Escribe al menos 3 caracteres.');
-      return;
-    }
-
-    setMapSearchOpen(true);
-    setMapSearchLoading(true);
-    setMapSearchError('');
-
-    try {
-      const results = await searchLocation(query, {
-        ...mapSearchBias,
-        session: mapSearchSessionRef.current,
-        allowTextSearch: true,
-      });
-      setMapSearchResults(results);
-      if (!results.length) setMapSearchError('No he encontrado esa ubicación.');
-    } catch (error) {
-      captureDiagnostic('search.main.submit', error);
-      setMapSearchResults([]);
-      setMapSearchError(error.message);
-    } finally {
-      setMapSearchLoading(false);
-    }
-  }
-
-  function clearInlineSearch() {
-    resetPlaceSearchSession(mapSearchSessionRef.current);
-    setMapSearchQuery('');
-    setMapSearchResults([]);
-    setMapSearchError('');
-    setMapSearchLoading(false);
-    setMapSearchOpen(false);
   }
 
   function selectPlace(place) {
@@ -654,6 +625,10 @@ export default function MainApp() {
   }
 
   async function centerOnUser() {
+    if (locationConsent !== true) {
+      setLocationConsentOpen(true);
+      return;
+    }
     recordBreadcrumb('location.button.tapped');
     googlePlaceRequestRef.current += 1;
     setGooglePlacePreview(null);
@@ -663,6 +638,16 @@ export default function MainApp() {
     const nextPosition = livePosition || position;
     setMapCenter({ lat: nextPosition.lat, lng: nextPosition.lng });
     recordBreadcrumb('location.button.completed', { live: Boolean(livePosition) });
+  }
+
+  async function activateLocation() {
+    const locationResult = await enableLocation();
+    if (!locationResult.enabled) return;
+    recordBreadcrumb('location.consent.enabled');
+    setLocationConsentOpen(false);
+    if (locationResult.position) {
+      setMapCenter({ lat: locationResult.position.lat, lng: locationResult.position.lng });
+    }
   }
 
   async function retrySync() {
@@ -712,7 +697,7 @@ export default function MainApp() {
     } catch (error) {
       if (requestId === googlePlaceRequestRef.current) {
         captureDiagnostic('map.google-place.resolve', error, { hasPlaceId: Boolean(placeId) });
-        setToast(error.message);
+        showToast(error.message, 'error');
       }
     } finally {
       if (requestId === googlePlaceRequestRef.current) setGooglePlaceLoading(false);
@@ -727,8 +712,6 @@ export default function MainApp() {
     recordBreadcrumb('directions.opened', { provider });
     window.open(url, '_blank', 'noopener,noreferrer');
   }
-
-  const showMapSearchPanel = mapSearchOpen && (mapSearchQuery.trim().length > 0 || mapSearchLoading || mapSearchError);
 
   return (
     <Box sx={{ height: '100dvh', bgcolor: 'background.default', overflow: 'hidden', position: 'relative' }}>
@@ -754,133 +737,34 @@ export default function MainApp() {
           pointerEvents: 'none',
         }}
       >
-        <ClickAwayListener onClickAway={() => setMapSearchOpen(false)}>
-          <Box sx={{ maxWidth: 680, mx: 'auto', position: 'relative', pointerEvents: 'auto' }}>
-            <Paper
-              elevation={0}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.6,
-                height: 58,
-                px: 0.65,
-                borderRadius: '18px',
-                bgcolor: 'rgba(255,255,255,0.92)',
-                border: '1px solid rgba(8,75,67,0.10)',
-                boxShadow: '0 18px 48px rgba(6,42,48,0.16)',
-                backdropFilter: 'blur(22px)',
-              }}
-            >
-              <Tooltip title="Menú">
-                <IconButton aria-label="Abrir menú" onClick={() => setMenuOpen(true)}>
-                  <MenuIcon />
-                </IconButton>
-              </Tooltip>
-              <Box
-                component="form"
-                onSubmit={handleInlineSearchSubmit}
-                sx={{
-                  flex: 1,
-                  minWidth: 0,
-                  height: 46,
-                  px: 1,
-                  borderRadius: '14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.9,
-                  bgcolor: mapSearchOpen ? 'rgba(8,75,67,0.06)' : 'transparent',
-                  transition: 'background-color 160ms ease',
-                }}
-              >
-                <SearchIcon fontSize="small" color="action" />
-                <InputBase
-                  value={mapSearchQuery}
-                  onFocus={() => setMapSearchOpen(true)}
-                  onChange={(event) => {
-                    setMapSearchQuery(event.target.value);
-                    setMapSearchOpen(true);
-                  }}
-                  placeholder="Buscar en el mapa"
-                  inputProps={{ 'aria-label': 'Buscar en el mapa' }}
-                  sx={{
-                    flex: 1,
-                    minWidth: 0,
-                    '& input': {
-                      p: 0,
-                      fontWeight: 850,
-                      fontSize: { xs: 15, sm: 16 },
-                      color: 'text.primary',
-                    },
-                    '& input::placeholder': {
-                      opacity: 1,
-                      color: 'text.secondary',
-                    },
-                  }}
-                />
-                {mapSearchLoading ? (
-                  <CircularProgress size={18} />
-                ) : (
-                  mapSearchQuery && (
-                    <IconButton type="button" aria-label="Limpiar búsqueda" size="small" onClick={clearInlineSearch}>
-                      <CloseIcon fontSize="small" />
-                    </IconButton>
-                  )
-                )}
-              </Box>
-              <Tooltip title={syncMeta.label}>
-                <Box
-                  role="status"
-                  aria-label={syncMeta.label}
-                  sx={{ width: 8, height: 8, mr: 1.2, borderRadius: 99, bgcolor: syncMeta.color }}
-                />
-              </Tooltip>
-            </Paper>
-
-            {showMapSearchPanel && (
-              <Paper
-                elevation={0}
-                sx={{
-                  mt: 1,
-                  maxHeight: { xs: 310, sm: 360 },
-                  overflow: 'auto',
-                  borderRadius: '16px',
-                  bgcolor: 'rgba(255,255,255,0.97)',
-                  border: '1px solid rgba(8,75,67,0.10)',
-                  boxShadow: '0 24px 60px rgba(6,42,48,0.18)',
-                  backdropFilter: 'blur(22px)',
-                }}
-              >
-                {mapSearchQuery.trim().length < 3 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1.6 }}>
-                    Escribe al menos 3 caracteres para buscar.
-                  </Typography>
-                ) : mapSearchError ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1.6 }}>
-                    {mapSearchError}
-                  </Typography>
-                ) : (
-                  <List dense disablePadding>
-                    {mapSearchResults.map((result, index) => (
-                      <ListItemButton
-                        key={`${result.id || `${result.name}-${result.lat}-${result.lng}`}-${index}`}
-                        onClick={() => void handleInlineSearchSelect(result)}
-                        sx={{ px: 2, py: 1.15, borderTop: index ? '1px solid rgba(8,75,67,0.08)' : 0 }}
-                      >
-                        <ListItemText
-                          primary={result.name}
-                          secondary={result.address}
-                          primaryTypographyProps={{ fontWeight: 850, noWrap: true }}
-                          secondaryTypographyProps={{ noWrap: true }}
-                        />
-                      </ListItemButton>
-                    ))}
-                  </List>
-                )}
-              </Paper>
-            )}
-          </Box>
-        </ClickAwayListener>
+        <MapSearch
+          bias={mapSearchBias}
+          onMenuOpen={() => setMenuOpen(true)}
+          onSelect={handleSearchSelect}
+          syncMeta={syncMeta}
+        />
       </Box>
+
+      {['offline', 'error'].includes(syncState.status) && (
+        <Alert
+          severity={syncState.status === 'error' ? 'error' : 'warning'}
+          action={<Button color="inherit" size="small" onClick={() => void retrySync()}>Reconectar</Button>}
+          sx={{
+            position: 'absolute',
+            top: 'calc(82px + env(safe-area-inset-top))',
+            left: { xs: 12, md: 18 },
+            right: { xs: 76, md: 'auto' },
+            width: { md: 410 },
+            zIndex: 945,
+            borderRadius: '14px',
+            boxShadow: '0 14px 36px rgba(6,42,48,0.14)',
+          }}
+        >
+          {syncState.status === 'error'
+            ? 'No se ha podido sincronizar. Comprueba la conexión y vuelve a conectar.'
+            : 'Sin conexión. Vuelve a conectar para sincronizar los cambios pendientes.'}
+        </Alert>
+      )}
 
       <Stack
         sx={{
@@ -891,18 +775,18 @@ export default function MainApp() {
           zIndex: 950,
         }}
       >
-        <Tooltip title={locationStatus === 'ready' ? 'Mi ubicación' : 'Referencia de cercanía'}>
+        <Tooltip title={locationConsent === true ? 'Mi ubicación' : 'Activar ubicación'}>
           <IconButton
-            aria-label="Ir a mi ubicación"
+            aria-label={locationConsent === true ? 'Ir a mi ubicación' : 'Activar ubicación'}
             onClick={() => void centerOnUser()}
             sx={{ bgcolor: 'rgba(255,255,255,0.94)', boxShadow: '0 10px 26px rgba(6,42,48,0.14)', backdropFilter: 'blur(18px)' }}
           >
             <MyLocationIcon />
           </IconButton>
         </Tooltip>
-        <Tooltip title="Filtrar mapa">
+        <Tooltip title={filtersActive ? `Filtrar mapa, ${filtersActive} activos` : 'Filtrar mapa'}>
           <IconButton
-            aria-label="Filtrar mapa"
+            aria-label={filtersActive ? `Filtrar mapa, ${filtersActive} activos` : 'Filtrar mapa'}
             onClick={openFilters}
             sx={{ bgcolor: 'rgba(255,255,255,0.94)', boxShadow: '0 10px 26px rgba(6,42,48,0.14)', backdropFilter: 'blur(18px)' }}
           >
@@ -921,27 +805,6 @@ export default function MainApp() {
           </IconButton>
         </Tooltip>
       </Stack>
-
-      {filtersActive > 0 && (
-        <Button
-          size="small"
-          startIcon={<FilterListIcon />}
-          onClick={openFilters}
-          sx={{
-            position: 'absolute',
-            left: { xs: 14, md: 18 },
-            top: 'calc(82px + env(safe-area-inset-top))',
-            zIndex: 930,
-            bgcolor: 'rgba(255,255,255,0.92)',
-            color: 'primary.dark',
-            boxShadow: '0 12px 30px rgba(6,42,48,0.14)',
-            backdropFilter: 'blur(18px)',
-            '&:hover': { bgcolor: 'rgba(255,255,255,0.98)' },
-          }}
-        >
-          {filtersActive} filtros de mapa
-        </Button>
-      )}
 
       {locationStatus !== 'ready' && locationError && !selectedPlace && !googlePlacePreview && !googlePlaceLoading && (
         <Paper
@@ -968,34 +831,15 @@ export default function MainApp() {
         </Paper>
       )}
 
-      {toast && (
-        <Alert
-          severity="success"
-          onClose={() => {
-            setToast('');
-            if (toast === 'Lugar eliminado.') setDeletedPlace(null);
-          }}
-          action={
-            toast === 'Lugar eliminado.' && deletedPlace ? (
-              <Button color="inherit" size="small" onClick={() => void undoDeletePlace()}>
-                Deshacer
-              </Button>
-            ) : undefined
-          }
-          sx={{
-            position: 'absolute',
-            left: { xs: 12, md: 18 },
-            right: { xs: 12, md: 'auto' },
-            bottom: selectedPlace || googlePlacePreview || googlePlaceLoading ? 'calc(154px + env(safe-area-inset-bottom))' : 'calc(88px + env(safe-area-inset-bottom))',
-            zIndex: 980,
-            width: { md: 390 },
-            borderRadius: '14px',
-            boxShadow: '0 18px 44px rgba(6,42,48,0.18)',
-          }}
-        >
-          {toast}
-        </Alert>
-      )}
+      <AppToast
+        toast={toast}
+        elevated={Boolean(selectedPlace || googlePlacePreview || googlePlaceLoading)}
+        onClose={() => {
+          if (toast?.undoDelete) setDeletedPlace(null);
+          setToast(null);
+        }}
+        onUndo={() => void undoDeletePlace()}
+      />
 
       <Fab
         color="secondary"
@@ -1069,11 +913,7 @@ export default function MainApp() {
         place={editingPlace}
         onClose={() => setPlaceDialogOpen(false)}
         searchBias={mapSearchBias}
-        onSave={async (place) => {
-          const saved = await handleSavePlace(place);
-          if (saved && place.inboxId) await inboxStore.deleteItem(place.inboxId);
-          return saved;
-        }}
+        onSave={(place) => (place.inboxId ? handleSaveEditedInboxItem(place) : handleSavePlace(place))}
       />
       <LinkImportDialog
         open={linkDialogOpen}
@@ -1081,6 +921,11 @@ export default function MainApp() {
         onImport={handleImportLink}
       />
       <FilterDrawer open={filtersOpen} filters={mapFilters} setFilters={setMapFilters} onClose={() => setFiltersOpen(false)} places={places} />
+      <LocationConsentDialog
+        open={locationConsentOpen}
+        onClose={() => setLocationConsentOpen(false)}
+        onEnable={() => void activateLocation()}
+      />
       <Drawer
         anchor="left"
         open={menuOpen}
@@ -1092,10 +937,14 @@ export default function MainApp() {
           places={places}
           inbox={inbox}
           syncState={syncState}
+          locationConsent={locationConsent}
+          locationStatus={locationStatus}
           onClose={() => setMenuOpen(false)}
           onImportLink={() => setLinkDialogOpen(true)}
           onOpenReview={openReview}
           onRetrySync={() => void retrySync()}
+          onEnableLocation={() => void activateLocation()}
+          onDisableLocation={disableLocation}
         />
       </Drawer>
     </Box>

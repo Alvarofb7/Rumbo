@@ -3,6 +3,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
 import NearMeIcon from '@mui/icons-material/NearMe';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { getSafeExternalPlaceUrl } from '../../lib/placeUrl';
 import { sourceMeta } from '../../data/demoData';
 import { formatDistance } from '../../lib/geo';
 import { CategoryBadge, getStatusMeta, RatingText, TagList } from '../common/placeUtils';
@@ -11,6 +12,7 @@ export default function SelectedPlaceCard({ place, onClose, onDirections, onEdit
   if (!place) return null;
   const statusMeta = getStatusMeta(place.status);
   const source = sourceMeta[place.sourceType] || sourceMeta.manual;
+  const sourceUrl = getSafeExternalPlaceUrl(place.sourceUrl);
 
   return (
     <Paper
@@ -52,10 +54,10 @@ export default function SelectedPlaceCard({ place, onClose, onDirections, onEdit
           </Stack>
           <TagList tags={place.tags} limit={3} />
 
-          {place.sourceUrl && (
+          {sourceUrl && (
             <Button
               component="a"
-              href={place.sourceUrl}
+              href={sourceUrl}
               target="_blank"
               rel="noreferrer"
               size="small"

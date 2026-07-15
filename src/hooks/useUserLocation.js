@@ -2,20 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import { defaultCenter } from '../data/demoData';
 import { captureDiagnostic } from '../lib/diagnostics';
 import { distanceInMeters } from '../lib/geo';
+import { readStorageJson, removeStorageValue, writeStorageJson } from '../lib/storage';
 
-const manualPositionKey = 'rumbo.manualPosition';
-const lastPositionKey = 'rumbo.lastPosition';
+export const locationConsentKey = 'rumbo.locationConsent';
+const legacyLocationKeys = ['rumbo.lastPosition', 'rumbo.manualPosition'];
 const minLivePositionMoveMeters = 18;
 
-function getStoredPosition(key) {
-  const stored = localStorage.getItem(key);
-  if (!stored) return null;
+export function readLocationConsent() {
+  return readStorageJson(locationConsentKey, null, { validate: (value) => value === true || value === false });
+}
 
-  try {
-    return JSON.parse(stored);
-  } catch {
-    return null;
-  }
+export function persistLocationConsent(value) {
+  return writeStorageJson(locationConsentKey, value);
 }
 
 function hasMovedEnough(previousPosition, nextPosition) {
@@ -30,16 +28,23 @@ function hasMovedEnough(previousPosition, nextPosition) {
 }
 
 export function useUserLocation() {
-  const initialManualPosition = getStoredPosition(manualPositionKey);
-  const manualPositionRef = useRef(initialManualPosition);
-  const initialPosition = initialManualPosition || getStoredPosition(lastPositionKey) || defaultCenter;
+  const initialConsent = readLocationConsent();
+  const manualPositionRef = useRef(null);
+  const initialPosition = defaultCenter;
   const currentPositionRef = useRef(initialPosition);
   const livePositionVersionRef = useRef(0);
+  const consentRef = useRef(initialConsent);
   const [position, setPosition] = useState(initialPosition);
-  const [status, setStatus] = useState(initialManualPosition ? 'manual' : 'idle');
+  const [consent, setConsent] = useState(initialConsent);
+  const [status, setStatus] = useState(initialConsent === true ? 'locating' : 'idle');
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    legacyLocationKeys.forEach(removeStorageValue);
+  }, []);
+
   function applyLivePosition(result) {
+    if (consentRef.current !== true) return currentPositionRef.current;
     const nextPosition = {
       lat: result.coords.latitude,
       lng: result.coords.longitude,
@@ -48,7 +53,6 @@ export function useUserLocation() {
     const previousPosition = currentPositionRef.current;
     const movedEnough = hasMovedEnough(previousPosition, nextPosition);
 
-    localStorage.setItem(lastPositionKey, JSON.stringify(nextPosition));
     livePositionVersionRef.current += 1;
     if (movedEnough) {
       currentPositionRef.current = nextPosition;
@@ -60,6 +64,7 @@ export function useUserLocation() {
   }
 
   function handleLocationError(locationError) {
+    if (consentRef.current !== true) return;
     setStatus(manualPositionRef.current ? 'manual' : 'fallback');
     setError(
       manualPositionRef.current
@@ -71,6 +76,8 @@ export function useUserLocation() {
   }
 
   useEffect(() => {
+    if (consent !== true) return undefined;
+
     if (!window.isSecureContext) {
       setStatus('insecure');
       setError('Para usar tu ubicación real en iPhone, abre Rumbo desde HTTPS. Mientras tanto puedes buscar una zona y usarla como referencia.');
@@ -93,7 +100,7 @@ export function useUserLocation() {
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
-  }, []);
+  }, [consent]);
 
   function setManualPosition(nextPosition) {
     const manualPosition = {
@@ -103,7 +110,6 @@ export function useUserLocation() {
       manual: true,
     };
 
-    localStorage.setItem(manualPositionKey, JSON.stringify(manualPosition));
     manualPositionRef.current = manualPosition;
     currentPositionRef.current = manualPosition;
     setPosition(manualPosition);
@@ -111,7 +117,8 @@ export function useUserLocation() {
     setError('Usando una ubicación de referencia manual.');
   }
 
-  function requestLivePosition() {
+  function requestLivePosition({ consentOverride = false } = {}) {
+    if (!consentOverride && consentRef.current !== true) return Promise.resolve(null);
     if (!window.isSecureContext || !navigator.geolocation) {
       const hasManualPosition = Boolean(manualPositionRef.current);
       setStatus(hasManualPosition ? 'manual' : 'fallback');
@@ -126,7 +133,6 @@ export function useUserLocation() {
     const previousManualPosition = manualPositionRef.current;
     const livePositionVersion = livePositionVersionRef.current;
     manualPositionRef.current = null;
-    localStorage.removeItem(manualPositionKey);
     setStatus('locating');
     setError('');
 
@@ -143,7 +149,6 @@ export function useUserLocation() {
           }
           if (previousManualPosition) {
             manualPositionRef.current = previousManualPosition;
-            localStorage.setItem(manualPositionKey, JSON.stringify(previousManualPosition));
             currentPositionRef.current = previousManualPosition;
             setPosition(previousManualPosition);
             setStatus('manual');
@@ -158,5 +163,31 @@ export function useUserLocation() {
     });
   }
 
-  return { position, status, error, setManualPosition, requestLivePosition };
+  async function enableLocation() {
+    if (!persistLocationConsent(true)) {
+      setError('No pude guardar tu preferencia de ubicación. Inténtalo de nuevo.');
+      return { enabled: false, position: null };
+    }
+    consentRef.current = true;
+    setConsent(true);
+    const livePosition = await requestLivePosition({ consentOverride: true });
+    return { enabled: true, position: livePosition };
+  }
+
+  function disableLocation() {
+    if (!persistLocationConsent(false)) {
+      setError('No pude desactivar la ubicación de forma segura. Inténtalo de nuevo.');
+      return false;
+    }
+    consentRef.current = false;
+    manualPositionRef.current = null;
+    currentPositionRef.current = defaultCenter;
+    setConsent(false);
+    setPosition(defaultCenter);
+    setStatus('idle');
+    setError('La ubicación está desactivada. Puedes activarla cuando quieras.');
+    return true;
+  }
+
+  return { position, status, error, consent, setManualPosition, requestLivePosition, enableLocation, disableLocation };
 }

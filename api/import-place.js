@@ -1,4 +1,5 @@
 import { inferPlaceCategory, normalizePlaceTags } from '../src/lib/placeData.js';
+import { ImportSecurityError, createBestEffortRateLimiter, fetchSafeHtml, verifyFirebaseIdToken } from './importSecurity.js';
 
 const sourceMatchers = [
   { sourceType: 'instagram', patterns: ['instagram.com'] },
@@ -48,12 +49,6 @@ function normalizeCityName(value = '') {
     .replace(/\bUnited States\b/gi, 'Estados Unidos')
     .replace(/\bProvince of\b.*$/i, '')
     .trim();
-}
-
-function normalizeUrl(rawUrl) {
-  const input = rawUrl.trim();
-  if (!input) throw new Error('Pega un enlace válido.');
-  return input.startsWith('http') ? input : `https://${input}`;
 }
 
 function inferSource(url) {
@@ -152,93 +147,6 @@ function parseMetadata(html) {
   };
 }
 
-async function fetchExpandedUrl(url, { timeoutMs = 9000 } = {}) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: {
-        accept: 'text/html,application/xhtml+xml',
-        'accept-language': 'es,en;q=0.8',
-        'user-agent': 'Mozilla/5.0 (compatible; RumboPersonalApp/1.0)',
-      },
-    });
-    const html = await response.text();
-
-    return {
-      ok: response.ok,
-      status: response.status,
-      finalUrl: response.url || url,
-      html,
-    };
-  } catch {
-    return { ok: false, status: 0, finalUrl: url, html: '' };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function stripTags(value = '') {
-  return decodeHtml(value.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
-}
-
-function cleanExtractedAddress(value = '') {
-  return normalizeCityName(
-    cleanText(value)
-      .replace(/\s+(?:Opening hours|Phone|Website|Email|Directions?):.*$/i, '')
-      .replace(/\s+Save Review Share.*$/i, '')
-      .replace(/\s+,/g, ',')
-      .replace(/,\s*,/g, ',')
-      .trim(),
-  );
-}
-
-function extractAddressFromText(value = '') {
-  const text = stripTags(value);
-  const labelledAddressMatch = text.match(
-    /\bAddress:\s*([^\n]{3,180}?)(?:\s+(?:Opening hours|Phone|Website|Email|Directions?|Similar places|Nearby):|$)/i,
-  );
-  if (labelledAddressMatch) return cleanExtractedAddress(labelledAddressMatch[1]);
-
-  const locatedAtMatch = text.match(/\blocated at\s+([^.!?]{3,180}?\b(?:Spain|España)\b)/i);
-  if (locatedAtMatch) return cleanExtractedAddress(locatedAtMatch[1]);
-
-  const addressMatch = text.match(
-    /\b(?:C\.|C\/|Calle|Av\.|Avenida|Paseo|Plaza|Pza\.|Ronda|Camino|Carretera)\s+[^:;()|\n]{3,100}?,\s*\d+[A-Za-z]?(?:,\s*\d{5}\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]+)?\b/i,
-  );
-
-  return addressMatch ? cleanExtractedAddress(addressMatch[0]) : '';
-}
-
-function extractSearchResultLinks(html = '') {
-  return [...html.matchAll(/uddg=([^&"']+)/gi)]
-    .map((match) => {
-      try {
-        return decodeURIComponent(match[1]);
-      } catch {
-        return '';
-      }
-    })
-    .filter((url) => /^https?:\/\//i.test(url))
-    .filter((url) => !url.includes('tripadvisor.') && !url.includes('google.') && !url.includes('duckduckgo.'))
-    .filter((url, index, urls) => urls.indexOf(url) === index)
-    .slice(0, 5);
-}
-
-async function fetchReadablePage(url, timeoutMs = 5000) {
-  const readerUrl = `https://r.jina.ai/http://${url}`;
-  const fetched = await fetchExpandedUrl(readerUrl, { timeoutMs });
-  return fetched.ok ? fetched.html : '';
-}
-
-function appendZone(address = '', zone = '') {
-  if (!address || !zone) return address || zone;
-  return normalizeForMatch(address).includes(normalizeForMatch(zone)) ? address : [address, zone].join(', ');
-}
-
 function getServerEnv(name) {
   return globalThis.process?.env?.[name] || '';
 }
@@ -249,95 +157,6 @@ function getGooglePlacesApiKey() {
 
 function getTripadvisorApiKey() {
   return getServerEnv('TRIPADVISOR_API_KEY') || getServerEnv('VITE_TRIPADVISOR_API_KEY');
-}
-
-function slugify(value = '') {
-  return cleanText(value)
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function getEnglishCitySlug(value = '') {
-  const normalizedCity = normalizeForMatch(normalizeCityName(value));
-  if (normalizedCity === 'sevilla') return 'seville';
-  return slugify(value);
-}
-
-function getLikelyPublicPages(basePlace) {
-  const placeSlug = normalizeForMatch(basePlace.name);
-  const dashedPlaceSlug = slugify(basePlace.name);
-  const citySlug = getEnglishCitySlug(basePlace.zone || basePlace.address);
-  if (!placeSlug || placeSlug.length < 3) return [];
-
-  return [...new Set([
-    `https://${placeSlug}.menustic.com/`,
-    dashedPlaceSlug && dashedPlaceSlug !== placeSlug ? `https://${dashedPlaceSlug}.menustic.com/` : '',
-    citySlug ? `https://intravel.net/${citySlug}/restaurants-cafes/${placeSlug}` : '',
-    citySlug && dashedPlaceSlug && dashedPlaceSlug !== placeSlug ? `https://intravel.net/${citySlug}/restaurants-cafes/${dashedPlaceSlug}` : '',
-  ].filter(Boolean))];
-}
-
-async function searchLikelyPublicPages(basePlace) {
-  const likelyPages = getLikelyPublicPages(basePlace);
-  if (!likelyPages.length) return null;
-
-  const pageResults = await Promise.allSettled(
-    likelyPages.map(async (pageUrl) => {
-      const readablePage = await fetchReadablePage(pageUrl, 3500);
-      const address = extractAddressFromText(readablePage);
-      return address ? { address, pageUrl } : null;
-    }),
-  );
-
-  const match = pageResults.find((result) => result.status === 'fulfilled' && result.value?.address)?.value;
-  if (!match) return null;
-
-  const zone = normalizeCityName(basePlace.zone || '');
-  return {
-    name: basePlace.name,
-    address: appendZone(match.address, zone),
-    zone,
-    source: 'web pública',
-  };
-}
-
-async function searchPublicWeb(basePlace) {
-  const publicPageResult = await searchLikelyPublicPages(basePlace);
-  if (publicPageResult) return publicPageResult;
-
-  const query = [basePlace.name, basePlace.zone || basePlace.address, 'restaurante dirección'].filter(Boolean).join(' ');
-  if (!query.trim()) return null;
-
-  const url = new URL('https://duckduckgo.com/html/');
-  url.searchParams.set('q', query);
-
-  const fetched = await fetchExpandedUrl(url.toString(), { timeoutMs: 5000 });
-  if (!fetched.ok || !fetched.html) return null;
-
-  const snippets = [...fetched.html.matchAll(/class=["']result__snippet["'][^>]*>([\s\S]*?)<\/a>/gi)].map((match) => match[1]);
-  const fallbackText = fetched.html.slice(0, 50000);
-  let address = snippets.map(extractAddressFromText).find(Boolean) || extractAddressFromText(fallbackText);
-
-  if (!address) {
-    const resultLinks = extractSearchResultLinks(fetched.html);
-    for (const resultLink of resultLinks) {
-      const readablePage = await fetchReadablePage(resultLink, 3000);
-      address = extractAddressFromText(readablePage);
-      if (address) break;
-    }
-  }
-
-  if (!address) return null;
-
-  return {
-    name: basePlace.name,
-    address: appendZone(address, basePlace.zone),
-    zone: basePlace.zone || '',
-    source: 'búsqueda web',
-  };
 }
 
 function normalizeForMatch(value = '') {
@@ -584,14 +403,10 @@ async function enrichPlace(basePlace) {
   const googleResult = await searchGooglePlaces(basePlace);
   if (googleResult && googleResult.lat !== '' && googleResult.lng !== '') return googleResult;
 
-  const webResult = await searchPublicWeb(basePlace);
   const queries = [
     [basePlace.name, basePlace.zone].filter(Boolean).join(' '),
     [basePlace.name, basePlace.address].filter(Boolean).join(' '),
     [basePlace.name, normalizeCityName(basePlace.zone)].filter(Boolean).join(' '),
-    [basePlace.name, webResult?.address].filter(Boolean).join(' '),
-    webResult?.address,
-    [webResult?.address, normalizeCityName(basePlace.zone)].filter(Boolean).join(' '),
     basePlace.name,
   ].filter(Boolean);
 
@@ -600,19 +415,19 @@ async function enrichPlace(basePlace) {
     if (result && isSpecificEnough(result, basePlace, query)) {
       return {
         ...result,
-        address: webResult?.address || result.address,
-        zone: getAddressZone(result.rawAddress) || basePlace.zone || webResult?.zone || result.zone,
-        source: webResult?.source || 'geocoding',
+        address: result.address,
+        zone: getAddressZone(result.rawAddress) || basePlace.zone || result.zone,
+        source: 'geocoding',
       };
     }
   }
 
-  return tripadvisorResult || googleResult || webResult;
+  return tripadvisorResult || googleResult;
 }
 
-export async function buildImportedPlace(rawUrl) {
-  const normalizedUrl = normalizeUrl(rawUrl);
-  const fetched = await fetchExpandedUrl(normalizedUrl);
+export async function buildImportedPlace(rawUrl, options = {}) {
+  const fetched = await fetchSafeHtml(rawUrl, options);
+  const normalizedUrl = fetched.finalUrl;
   const resolvedUrl = fetched.finalUrl || normalizedUrl;
   const sourceType = inferSource(`${normalizedUrl} ${resolvedUrl}`);
   const metadata = fetched.ok ? parseMetadata(fetched.html) : {};
@@ -650,7 +465,30 @@ export async function buildImportedPlace(rawUrl) {
   };
 }
 
-export default async function handler(request, response) {
+const importRateLimiter = createBestEffortRateLimiter();
+
+function getClientIp(request) {
+  return String(request.headers?.['x-forwarded-for'] || request.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+}
+
+function getFirebaseProjectId() {
+  return getServerEnv('FIREBASE_PROJECT_ID') || getServerEnv('VITE_FIREBASE_PROJECT_ID');
+}
+
+function toPublicImportError(error) {
+  if (error instanceof ImportSecurityError) return error;
+  const message = String(error?.message || '');
+  if (/^(Pega|Solo se aceptan|No parece|El enlace no puede incluir|Solo se aceptan enlaces)/.test(message)) {
+    return new ImportSecurityError(400, message);
+  }
+  if (/token|sesión|Firebase|autenticación/i.test(message)) {
+    return new ImportSecurityError(401, 'Tu sesión no es válida. Vuelve a iniciar sesión.');
+  }
+  return new ImportSecurityError(502, 'No se pudo consultar el enlace en este momento.');
+}
+
+export function createImportHandler({ rateLimiter = importRateLimiter, verifyToken = verifyFirebaseIdToken, buildPlace = buildImportedPlace } = {}) {
+  return async function handler(request, response) {
   const startedAt = Date.now();
   const requestId = request.headers?.['x-vercel-id'] || '';
   if (request.method !== 'POST') {
@@ -662,8 +500,23 @@ export default async function handler(request, response) {
 
   try {
     const body = typeof request.body === 'string' ? JSON.parse(request.body || '{}') : request.body;
+    const ipRate = rateLimiter.check(`ip:${getClientIp(request)}`);
+    if (!ipRate.allowed) {
+      response.setHeader('Retry-After', String(ipRate.retryAfter));
+      response.status(429).json({ error: 'Has hecho demasiadas importaciones. Espera antes de reintentar.' });
+      return;
+    }
+    const authorization = request.headers?.authorization || '';
+    const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+    const identity = await verifyToken(token, { projectId: getFirebaseProjectId() });
+    const userRate = rateLimiter.check(`user:${identity.uid}`);
+    if (!userRate.allowed) {
+      response.setHeader('Retry-After', String(userRate.retryAfter));
+      response.status(429).json({ error: 'Has hecho demasiadas importaciones. Espera antes de reintentar.' });
+      return;
+    }
     console.log(JSON.stringify({ level: 'info', message: 'import_started', requestId }));
-    const place = await buildImportedPlace(body?.url || '');
+    const place = await buildPlace(body?.url || '');
     console.log(
       JSON.stringify({
         level: 'info',
@@ -676,15 +529,19 @@ export default async function handler(request, response) {
     );
     response.status(200).json(place);
   } catch (error) {
+    const publicError = toPublicImportError(error);
     console.error(
       JSON.stringify({
         level: 'error',
         message: 'import_failed',
         requestId,
         durationMs: Date.now() - startedAt,
-        error: error.message || 'Unknown import error',
+        error: error?.message || 'Unknown import error',
       }),
     );
-    response.status(400).json({ error: error.message || 'No se pudo importar el enlace.' });
+    response.status(publicError.status).json({ error: publicError.message });
   }
 }
+}
+
+export default createImportHandler();

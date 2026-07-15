@@ -1,11 +1,13 @@
 import { Box, Button, Chip, CircularProgress, IconButton, Paper, Stack, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { getSafeExternalPlaceUrl } from '../../lib/placeUrl';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import { CategoryBadge } from '../common/placeUtils';
 
 export default function GooglePlaceCard({ place, loading, onClose, onSave }) {
   if (!place && !loading) return null;
+  const sourceUrl = getSafeExternalPlaceUrl(place?.sourceUrl);
 
   return (
     <Paper
@@ -61,10 +63,10 @@ export default function GooglePlaceCard({ place, loading, onClose, onSave }) {
           </Stack>
 
           <Stack direction="row" spacing={1} sx={{ pt: 0.2 }}>
-            {place.sourceUrl && (
+            {sourceUrl && (
               <Button
                 component="a"
-                href={place.sourceUrl}
+                href={sourceUrl}
                 target="_blank"
                 rel="noreferrer"
                 size="small"

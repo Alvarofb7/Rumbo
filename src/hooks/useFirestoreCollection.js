@@ -11,10 +11,16 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../lib/firebase';
 import { captureDiagnostic } from '../lib/diagnostics';
 import { serializeFirestoreDocument, withoutDocumentId } from '../lib/firestoreData';
+import {
+  commitFirestoreMutation,
+  convertFirestoreInboxRecommendation,
+  convertLocalInboxRecommendation,
+} from '../lib/firestoreMutations';
 import { useLocalCollection } from './useLocalCollection';
 
 const identity = (item) => item;
@@ -27,7 +33,12 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
   const [remoteItems, setRemoteItems] = useState([]);
   const [remoteLoading, setRemoteLoading] = useState(Boolean(isFirebaseConfigured && user && !user.isLocal));
   const [networkOnline, setNetworkOnline] = useState(() => navigator.onLine);
-  const [pendingWrites, setPendingWrites] = useState(false);
+  const [snapshotPendingWrites, setSnapshotPendingWrites] = useState(false);
+  const [inFlightWrites, setInFlightWrites] = useState(0);
+  const pendingWrites = snapshotPendingWrites || inFlightWrites > 0;
+  const incrementPendingWrites = useCallback(() => setInFlightWrites((count) => count + 1), []);
+  const decrementPendingWrites = useCallback(() => setInFlightWrites((count) => Math.max(0, count - 1)), []);
+  const [reconnecting, setReconnecting] = useState(false);
   const [syncError, setSyncError] = useState('');
 
   useEffect(() => {
@@ -51,10 +62,10 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
     return onSnapshot(
       ordered,
       { includeMetadataChanges: true },
-      (snapshot) => {
+      async (snapshot) => {
         setRemoteItems(snapshot.docs.map((document) => normalizeItem(serializeFirestoreDocument(document))));
         setRemoteLoading(false);
-        setPendingWrites(snapshot.metadata.hasPendingWrites);
+        setSnapshotPendingWrites(snapshot.metadata.hasPendingWrites);
         setSyncError('');
 
         if (getMigration) {
@@ -67,7 +78,14 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
             if (!Object.keys(patch).length) return [];
             return updateDoc(document.ref, { ...patch, updatedAt: serverTimestamp() });
           });
-          if (migrations.length) void Promise.allSettled(migrations);
+          if (migrations.length) {
+            try {
+              await Promise.all(migrations);
+            } catch (error) {
+              captureDiagnostic('sync.migration', error, { collection: collectionName });
+              setSyncError(error.message || 'No se han podido actualizar los datos.');
+            }
+          }
         }
       },
       (error) => {
@@ -84,19 +102,27 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
       const ref = collection(db, 'users', user.uid, collectionName);
       const created = item.id ? doc(ref, item.id) : doc(ref);
       const data = withoutDocumentId(normalizeItem(item));
+      delete data.createdAt;
+      delete data.updatedAt;
       const payload = {
         ...data,
-        createdAt: item.createdAt || serverTimestamp(),
+        createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
-      setPendingWrites(true);
-      void setDoc(created, payload).catch((error) => {
-        captureDiagnostic('sync.create', error, { collection: collectionName });
-        setSyncError(error.message || 'No se ha podido guardar el cambio.');
+      const result = await commitFirestoreMutation({
+        execute: () => setDoc(created, payload),
+        incrementPendingWrites,
+        decrementPendingWrites,
+        setSyncError,
+        captureDiagnostic,
+        diagnosticKey: 'sync.create',
+        diagnosticContext: { collection: collectionName },
+        fallbackMessage: 'No se ha podido guardar el cambio.',
+        offline: !networkOnline,
       });
-      return { ...item, id: created.id };
+      return { ...item, id: created.id, queued: Boolean(result?.queued), completion: result?.completion };
     },
-    [collectionName, local, normalizeItem, user],
+    [collectionName, decrementPendingWrites, incrementPendingWrites, local, networkOnline, normalizeItem, user],
   );
 
   const updateItem = useCallback(
@@ -104,42 +130,100 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
       if (!isFirebaseConfigured || !db || !user || user.isLocal) return local.updateItem(id, patch);
       const ref = doc(db, 'users', user.uid, collectionName, id);
       const payload = withoutDocumentId(normalizeItem(patch));
-      setPendingWrites(true);
-      void updateDoc(ref, { ...payload, updatedAt: serverTimestamp() }).catch((error) => {
-        captureDiagnostic('sync.update', error, { collection: collectionName });
-        setSyncError(error.message || 'No se ha podido guardar el cambio.');
+      delete payload.createdAt;
+      delete payload.updatedAt;
+      const result = await commitFirestoreMutation({
+        execute: () => updateDoc(ref, { ...payload, updatedAt: serverTimestamp() }),
+        incrementPendingWrites,
+        decrementPendingWrites,
+        setSyncError,
+        captureDiagnostic,
+        diagnosticKey: 'sync.update',
+        diagnosticContext: { collection: collectionName },
+        fallbackMessage: 'No se ha podido guardar el cambio.',
+        offline: !networkOnline,
       });
-      return { ...payload, id };
+      return { ...payload, id, queued: Boolean(result?.queued) };
     },
-    [collectionName, local, normalizeItem, user],
+    [collectionName, decrementPendingWrites, incrementPendingWrites, local, networkOnline, normalizeItem, user],
   );
 
   const deleteItem = useCallback(
     async (id) => {
       if (!isFirebaseConfigured || !db || !user || user.isLocal) return local.deleteItem(id);
       const ref = doc(db, 'users', user.uid, collectionName, id);
-      setPendingWrites(true);
-      void deleteDoc(ref).catch((error) => {
-        captureDiagnostic('sync.delete', error, { collection: collectionName });
-        setSyncError(error.message || 'No se ha podido eliminar el lugar.');
+      const result = await commitFirestoreMutation({
+        execute: () => deleteDoc(ref),
+        incrementPendingWrites,
+        decrementPendingWrites,
+        setSyncError,
+        captureDiagnostic,
+        diagnosticKey: 'sync.delete',
+        diagnosticContext: { collection: collectionName },
+        fallbackMessage: 'No se ha podido eliminar el lugar.',
+        offline: !networkOnline,
       });
-      return undefined;
+      return result;
     },
-    [collectionName, local, user],
+    [collectionName, decrementPendingWrites, incrementPendingWrites, local, networkOnline, user],
   );
 
   const retrySync = useCallback(async () => {
     if (!db) return;
-    setSyncError('');
+    setReconnecting(true);
     try {
       await enableNetwork(db);
+      setSyncError('');
     } catch (error) {
       captureDiagnostic('sync.retry', error);
       setSyncError(error.message || 'No se ha podido reanudar la sincronización.');
+    } finally {
+      setReconnecting(false);
     }
   }, []);
 
-  if (!isFirebaseConfigured || !db || !user || user.isLocal) return local;
+  const convertInboxToPlace = useCallback(
+    async (inboxId, place, placesStore) => {
+      if (!isFirebaseConfigured || !db || !user || user.isLocal) {
+        return convertLocalInboxRecommendation({
+          inboxId,
+          place,
+          addPlace: placesStore.addItem,
+          deleteInbox: local.deleteItem,
+        });
+      }
+
+      const payload = withoutDocumentId(normalizeItem(place));
+      return commitFirestoreMutation({
+        execute: () => convertFirestoreInboxRecommendation({
+          db,
+          userId: user.uid,
+          inboxId,
+          place: payload,
+          createCollection: collection,
+          createDocument: doc,
+          createBatch: writeBatch,
+          timestamp: serverTimestamp,
+        }),
+        incrementPendingWrites,
+        decrementPendingWrites,
+        setSyncError,
+        captureDiagnostic,
+        diagnosticKey: 'sync.convert-inbox',
+        diagnosticContext: { collection: collectionName },
+        fallbackMessage: 'No se ha podido guardar la recomendación.',
+        offline: !networkOnline,
+      });
+    },
+    [collectionName, decrementPendingWrites, incrementPendingWrites, local.deleteItem, networkOnline, normalizeItem, user],
+  );
+
+  if (!isFirebaseConfigured || !db || !user || user.isLocal) {
+    return {
+      ...local,
+      convertInboxToPlace,
+    };
+  }
 
   return {
     items: remoteItems,
@@ -147,10 +231,12 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
     addItem,
     updateItem,
     deleteItem,
+    convertInboxToPlace,
     retrySync,
     syncState: {
-      status: syncError ? 'error' : !networkOnline ? 'offline' : pendingWrites ? 'pending' : 'synced',
+      status: reconnecting ? 'reconnecting' : syncError ? 'error' : !networkOnline ? 'offline' : pendingWrites ? 'pending' : 'synced',
       pending: pendingWrites,
+      reconnecting,
       offline: !networkOnline,
       error: syncError,
     },
