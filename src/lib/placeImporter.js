@@ -2,10 +2,18 @@ import { parsePlaceLink } from './linkParser';
 import { sanitizePlaceRecord } from './placeData';
 import { normalizeSupportedPlaceUrl } from './placeUrl';
 
+function importWithLocalParser(url) {
+  return sanitizePlaceRecord(parsePlaceLink(url));
+}
+
+function isRecoverableImportFailure(error) {
+  return error instanceof TypeError || /failed to fetch|network/i.test(String(error?.message || ''));
+}
+
 export async function importPlaceFromUrl(url, { user } = {}) {
   const normalizedUrl = normalizeSupportedPlaceUrl(url);
   if (!user || user.isLocal || typeof user.getIdToken !== 'function') {
-    return sanitizePlaceRecord(parsePlaceLink(normalizedUrl));
+    return importWithLocalParser(normalizedUrl);
   }
   const token = await user.getIdToken();
   if (!token) throw new Error('No se pudo obtener una sesión válida para importar el enlace.');
@@ -21,12 +29,13 @@ export async function importPlaceFromUrl(url, { user } = {}) {
 
     const contentType = response.headers.get('content-type') || '';
     if (response.ok && contentType.includes('application/json')) return sanitizePlaceRecord(await response.json());
-    if (response.ok) return sanitizePlaceRecord(parsePlaceLink(normalizedUrl));
+    if (response.ok) return importWithLocalParser(normalizedUrl);
     const error = await response.json().catch(() => null);
+    if (response.status >= 500) return importWithLocalParser(normalizedUrl);
     throw new Error(error?.error || 'No se pudo importar el enlace.');
   } catch (error) {
-    if (!String(error.message || '').includes('Failed to fetch')) throw error;
+    if (!isRecoverableImportFailure(error)) throw error;
   }
 
-  return sanitizePlaceRecord(parsePlaceLink(normalizedUrl));
+  return importWithLocalParser(normalizedUrl);
 }

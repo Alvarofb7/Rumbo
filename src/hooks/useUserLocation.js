@@ -12,6 +12,10 @@ export function readLocationConsent() {
   return readStorageJson(locationConsentKey, null, { validate: (value) => value === true || value === false });
 }
 
+export function persistLocationConsent(value) {
+  return writeStorageJson(locationConsentKey, value);
+}
+
 function hasMovedEnough(previousPosition, nextPosition) {
   if (previousPosition?.manual) return true;
 
@@ -160,21 +164,28 @@ export function useUserLocation() {
   }
 
   function enableLocation() {
+    if (!persistLocationConsent(true)) {
+      setError('No pude guardar tu preferencia de ubicación. Inténtalo de nuevo.');
+      return Promise.resolve(null);
+    }
     consentRef.current = true;
-    writeStorageJson(locationConsentKey, true);
     setConsent(true);
     return requestLivePosition({ consentOverride: true });
   }
 
   function disableLocation() {
+    if (!persistLocationConsent(false)) {
+      setError('No pude desactivar la ubicación de forma segura. Inténtalo de nuevo.');
+      return false;
+    }
     consentRef.current = false;
-    writeStorageJson(locationConsentKey, false);
     manualPositionRef.current = null;
     currentPositionRef.current = defaultCenter;
     setConsent(false);
     setPosition(defaultCenter);
     setStatus('idle');
     setError('La ubicación está desactivada. Puedes activarla cuando quieras.');
+    return true;
   }
 
   return { position, status, error, consent, setManualPosition, requestLivePosition, enableLocation, disableLocation };

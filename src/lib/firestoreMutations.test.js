@@ -48,6 +48,66 @@ describe('Firestore mutations', () => {
     expect(pending).toBe(0);
   });
 
+  it('returns a queued outcome after the offline timeout without completing twice', async () => {
+    vi.useFakeTimers();
+    let resolveWrite;
+    const write = new Promise((resolve) => { resolveWrite = resolve; });
+    const incrementPendingWrites = vi.fn();
+    const decrementPendingWrites = vi.fn();
+    const outcome = commitFirestoreMutation({
+      execute: () => write,
+      incrementPendingWrites,
+      decrementPendingWrites,
+      setSyncError: vi.fn(),
+      captureDiagnostic: vi.fn(),
+      diagnosticKey: 'sync.create',
+      diagnosticContext: {},
+      fallbackMessage: 'failed',
+      offline: true,
+      queueTimeoutMs: 20,
+    });
+
+    await vi.advanceTimersByTimeAsync(20);
+    const queued = await outcome;
+    expect(queued.queued).toBe(true);
+    resolveWrite();
+    await expect(queued.completion).resolves.toEqual({ result: undefined });
+    expect(incrementPendingWrites).toHaveBeenCalledOnce();
+    expect(decrementPendingWrites).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it('propagates online write rejection instead of reporting it as queued', async () => {
+    await expect(commitFirestoreMutation({
+      execute: () => Promise.reject(new Error('permission-denied')),
+      incrementPendingWrites: vi.fn(),
+      decrementPendingWrites: vi.fn(),
+      setSyncError: vi.fn(),
+      captureDiagnostic: vi.fn(),
+      diagnosticKey: 'sync.create',
+      diagnosticContext: {},
+      fallbackMessage: 'failed',
+    })).rejects.toThrow('permission-denied');
+  });
+
+  it('exposes a safe queued completion when the offline write later rejects', async () => {
+    vi.useFakeTimers();
+    let rejectWrite;
+    const rejected = new Error('permission-denied');
+    const setSyncError = vi.fn();
+    const outcome = commitFirestoreMutation({
+      execute: () => new Promise((_, reject) => { rejectWrite = reject; }),
+      incrementPendingWrites: vi.fn(), decrementPendingWrites: vi.fn(), setSyncError, captureDiagnostic: vi.fn(),
+      diagnosticKey: 'sync.create', diagnosticContext: {}, fallbackMessage: 'failed', offline: true, queueTimeoutMs: 20,
+    });
+    await vi.advanceTimersByTimeAsync(20);
+    const queued = await outcome;
+    rejectWrite(rejected);
+    await expect(queued.completion).resolves.toEqual({ error: rejected });
+    expect(setSyncError).toHaveBeenCalledWith('permission-denied');
+    vi.useRealTimers();
+  });
+
   it('keeps the local inbox item when place creation fails', async () => {
     const addPlace = vi.fn().mockRejectedValue(new Error('storage full'));
     const deleteInbox = vi.fn();

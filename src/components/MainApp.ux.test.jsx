@@ -38,8 +38,25 @@ describe('remaining UX and privacy integrations', () => {
     expect(mainSource).toContain("No se ha podido descartar la recomendación.");
   });
 
+  it('keeps undo retry state until a queued restoration settles durably', () => {
+    const undoDeletePlace = mainSource.match(/async function undoDeletePlace\(\) \{([\s\S]*?)\n\s{2}\}/)?.[1];
+    expect(undoDeletePlace).toContain('if (restored.queued)');
+    expect(undoDeletePlace).toContain('restored.completion?.then(({ error }) =>');
+    expect(undoDeletePlace).toContain("showToast('Recuperación en cola hasta recuperar la conexión.', 'info')");
+    expect(undoDeletePlace).toContain("showToast(error.message || 'No se ha podido recuperar el lugar.', 'error', { undoDelete: true })");
+    expect(undoDeletePlace.indexOf('setDeletedPlace(null)')).toBeGreaterThan(undoDeletePlace.indexOf('if (restored.queued)'));
+  });
+
   it('does not update local authentication state when durable storage fails', () => {
     expect(authSource).toContain("if (!writeStorageJson(localUserKey, localUser)) throw new Error");
     expect(authSource).toContain("if (user?.isLocal && !removeStorageValue(localUserKey)) throw new Error");
+  });
+
+  it('only confirms location consent after enablement succeeds', () => {
+    const activateLocation = mainSource.match(/async function activateLocation\(\) \{([\s\S]*?)\n\s{2}\}/)?.[1];
+    expect(activateLocation).toContain('const livePosition = await enableLocation();');
+    expect(activateLocation).toContain('if (!livePosition) return;');
+    expect(activateLocation.indexOf("recordBreadcrumb('location.consent.enabled')")).toBeGreaterThan(activateLocation.indexOf('if (!livePosition) return;'));
+    expect(activateLocation.indexOf('setLocationConsentOpen(false)')).toBeGreaterThan(activateLocation.indexOf('if (!livePosition) return;'));
   });
 });

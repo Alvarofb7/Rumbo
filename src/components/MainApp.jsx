@@ -388,13 +388,13 @@ export default function MainApp() {
 
     try {
       if (payload.id) {
-        await placesStore.updateItem(payload.id, payload);
+        const updated = await placesStore.updateItem(payload.id, payload);
         setSelectedPlaceId(payload.id);
-        showToast(`Lugar actualizado${approximate ? ' con ubicación aproximada' : ''}.`, approximate ? 'info' : 'success');
+        showToast(updated?.queued ? 'Cambio en cola hasta recuperar la conexión.' : `Lugar actualizado${approximate ? ' con ubicación aproximada' : ''}.`, updated?.queued || approximate ? 'info' : 'success');
       } else {
         const created = await placesStore.addItem(payload);
         setSelectedPlaceId(created.id);
-        showToast(`Lugar guardado${approximate ? ' con ubicación aproximada' : ''}.`, approximate ? 'info' : 'success');
+        showToast(created.queued ? 'Cambio en cola hasta recuperar la conexión.' : `Lugar guardado${approximate ? ' con ubicación aproximada' : ''}.`, created.queued || approximate ? 'info' : 'success');
       }
     } catch (error) {
       captureDiagnostic('place.save.persist', error, { mode });
@@ -414,8 +414,13 @@ export default function MainApp() {
     const place = places.find((candidate) => candidate.id === placeId);
     if (!place) return;
     recordBreadcrumb('place.delete.started');
-    try { await placesStore.deleteItem(placeId); } catch (error) { showToast(error.message || 'No se ha podido eliminar el lugar.', 'error'); return; }
+    let deletion;
+    try { deletion = await placesStore.deleteItem(placeId); } catch (error) { showToast(error.message || 'No se ha podido eliminar el lugar.', 'error'); return; }
     if (selectedPlaceId === placeId) setSelectedPlaceId(null);
+    if (deletion?.queued) {
+      showToast('Eliminación en cola hasta recuperar la conexión.', 'info');
+      return;
+    }
     setDeletedPlace(place);
     showToast('Lugar eliminado.', 'success', { undoDelete: true });
     recordBreadcrumb('place.delete.queued');
@@ -425,6 +430,19 @@ export default function MainApp() {
     if (!deletedPlace) return;
     let restored;
     try { restored = await placesStore.addItem(deletedPlace); } catch (error) { showToast(error.message || 'No se ha podido recuperar el lugar.', 'error'); return; }
+    if (restored.queued) {
+      showToast('Recuperación en cola hasta recuperar la conexión.', 'info');
+      restored.completion?.then(({ error }) => {
+        if (error) {
+          showToast(error.message || 'No se ha podido recuperar el lugar.', 'error', { undoDelete: true });
+          return;
+        }
+        setDeletedPlace((pending) => (pending?.id === deletedPlace.id ? null : pending));
+        setSelectedPlaceId(restored.id);
+        showToast('Lugar recuperado.');
+      });
+      return;
+    }
     setDeletedPlace(null);
     setSelectedPlaceId(restored.id);
     showToast('Lugar recuperado.');
@@ -510,6 +528,10 @@ export default function MainApp() {
       showToast(error.message || 'No se ha podido guardar la recomendación.', 'error');
       return;
     }
+    if (created.queued) {
+      showToast('Conversión en cola hasta recuperar la conexión.', 'info');
+      return;
+    }
     setSelectedPlaceId(created.id);
     setMapCenter({ lat: payload.lat, lng: payload.lng });
     setReviewOpen(false);
@@ -555,6 +577,10 @@ export default function MainApp() {
 
     try {
       const created = await inboxStore.convertInboxToPlace(place.inboxId, payload, placesStore);
+      if (created.queued) {
+        showToast('Conversión en cola hasta recuperar la conexión.', 'info');
+        return true;
+      }
       setSelectedPlaceId(created.id);
       setMapCenter({ lat: payload.lat, lng: payload.lng });
       setPlaceDialogOpen(false);
@@ -615,9 +641,10 @@ export default function MainApp() {
   }
 
   async function activateLocation() {
-    setLocationConsentOpen(false);
-    recordBreadcrumb('location.consent.enabled');
     const livePosition = await enableLocation();
+    if (!livePosition) return;
+    recordBreadcrumb('location.consent.enabled');
+    setLocationConsentOpen(false);
     if (livePosition) setMapCenter({ lat: livePosition.lat, lng: livePosition.lng });
   }
 

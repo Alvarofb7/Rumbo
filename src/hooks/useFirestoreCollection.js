@@ -109,7 +109,7 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
-      await commitFirestoreMutation({
+      const result = await commitFirestoreMutation({
         execute: () => setDoc(created, payload),
         incrementPendingWrites,
         decrementPendingWrites,
@@ -118,10 +118,11 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
         diagnosticKey: 'sync.create',
         diagnosticContext: { collection: collectionName },
         fallbackMessage: 'No se ha podido guardar el cambio.',
+        offline: !networkOnline,
       });
-      return { ...item, id: created.id };
+      return { ...item, id: created.id, queued: Boolean(result?.queued), completion: result?.completion };
     },
-    [collectionName, decrementPendingWrites, incrementPendingWrites, local, normalizeItem, user],
+    [collectionName, decrementPendingWrites, incrementPendingWrites, local, networkOnline, normalizeItem, user],
   );
 
   const updateItem = useCallback(
@@ -131,7 +132,7 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
       const payload = withoutDocumentId(normalizeItem(patch));
       delete payload.createdAt;
       delete payload.updatedAt;
-      await commitFirestoreMutation({
+      const result = await commitFirestoreMutation({
         execute: () => updateDoc(ref, { ...payload, updatedAt: serverTimestamp() }),
         incrementPendingWrites,
         decrementPendingWrites,
@@ -140,17 +141,18 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
         diagnosticKey: 'sync.update',
         diagnosticContext: { collection: collectionName },
         fallbackMessage: 'No se ha podido guardar el cambio.',
+        offline: !networkOnline,
       });
-      return { ...payload, id };
+      return { ...payload, id, queued: Boolean(result?.queued) };
     },
-    [collectionName, decrementPendingWrites, incrementPendingWrites, local, normalizeItem, user],
+    [collectionName, decrementPendingWrites, incrementPendingWrites, local, networkOnline, normalizeItem, user],
   );
 
   const deleteItem = useCallback(
     async (id) => {
       if (!isFirebaseConfigured || !db || !user || user.isLocal) return local.deleteItem(id);
       const ref = doc(db, 'users', user.uid, collectionName, id);
-      await commitFirestoreMutation({
+      const result = await commitFirestoreMutation({
         execute: () => deleteDoc(ref),
         incrementPendingWrites,
         decrementPendingWrites,
@@ -159,10 +161,11 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
         diagnosticKey: 'sync.delete',
         diagnosticContext: { collection: collectionName },
         fallbackMessage: 'No se ha podido eliminar el lugar.',
+        offline: !networkOnline,
       });
-      return undefined;
+      return result;
     },
-    [collectionName, decrementPendingWrites, incrementPendingWrites, local, user],
+    [collectionName, decrementPendingWrites, incrementPendingWrites, local, networkOnline, user],
   );
 
   const retrySync = useCallback(async () => {
@@ -209,9 +212,10 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
         diagnosticKey: 'sync.convert-inbox',
         diagnosticContext: { collection: collectionName },
         fallbackMessage: 'No se ha podido guardar la recomendación.',
+        offline: !networkOnline,
       });
     },
-    [collectionName, decrementPendingWrites, incrementPendingWrites, local.deleteItem, normalizeItem, user],
+    [collectionName, decrementPendingWrites, incrementPendingWrites, local.deleteItem, networkOnline, normalizeItem, user],
   );
 
   if (!isFirebaseConfigured || !db || !user || user.isLocal) {

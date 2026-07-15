@@ -7,18 +7,54 @@ export async function commitFirestoreMutation({
   diagnosticKey,
   diagnosticContext,
   fallbackMessage,
+  offline = false,
+  queueTimeoutMs = 1500,
 }) {
   incrementPendingWrites();
 
-  try {
-    return await execute();
-  } catch (error) {
-    captureDiagnostic(diagnosticKey, error, diagnosticContext);
-    setSyncError(error.message || fallbackMessage);
-    throw error;
-  } finally {
-    decrementPendingWrites();
+  const mutation = Promise.resolve().then(execute);
+  if (!offline) {
+    try {
+      return await mutation;
+    } catch (error) {
+      captureDiagnostic(diagnosticKey, error, diagnosticContext);
+      setSyncError(error.message || fallbackMessage);
+      throw error;
+    } finally {
+      decrementPendingWrites();
+    }
   }
+
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    let resolveCompletion;
+    const completion = new Promise((resolve) => { resolveCompletion = resolve; });
+    const finish = (result) => {
+      if (completed) return;
+      completed = true;
+      clearTimeout(timeoutId);
+      decrementPendingWrites();
+      resolve(result);
+    };
+    const timeoutId = setTimeout(() => finish({ queued: true, completion }), queueTimeoutMs);
+
+    mutation.then(
+      (result) => {
+        resolveCompletion({ result });
+        finish({ result, queued: true, completion });
+      },
+      (error) => {
+        captureDiagnostic(diagnosticKey, error, diagnosticContext);
+        setSyncError(error.message || fallbackMessage);
+        resolveCompletion({ error });
+        if (completed) return;
+        completed = true;
+        clearTimeout(timeoutId);
+        decrementPendingWrites();
+        reject(error);
+      },
+    );
+  });
 }
 
 export async function convertLocalInboxRecommendation({ inboxId, place, addPlace, deleteInbox }) {
