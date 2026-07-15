@@ -59,4 +59,20 @@ describe('remaining UX and privacy integrations', () => {
     expect(activateLocation.indexOf("recordBreadcrumb('location.consent.enabled')")).toBeGreaterThan(activateLocation.indexOf('if (!locationResult.enabled) return;'));
     expect(activateLocation).toContain('if (locationResult.position)');
   });
+
+  it('opens location onboarding automatically for a first-time user', () => {
+    expect(mainSource).toContain('if (locationConsent === null) setLocationConsentOpen(true);');
+  });
+
+  it('leaves the map unchanged when live and stored positions are unavailable', () => {
+    const centerOnUser = mainSource.match(/async function centerOnUser\(\) \{([\s\S]*?)\n\s{2}\}/)?.[1];
+    expect(centerOnUser).toContain('const nextPosition = livePosition || position;');
+    expect(centerOnUser).toMatch(/if \(!hasValidCoordinates\(nextPosition\)\) \{[\s\S]*?return;\n\s{4}\}\n\s{4}setMapCenter\(\{ lat: nextPosition\.lat, lng: nextPosition\.lng \}\);/);
+  });
+
+  it('rejects a place without coordinates when the current position is unavailable', () => {
+    const buildPlacePayload = mainSource.match(/async function buildPlacePayload\(place, options = \{\}\) \{([\s\S]*?)\n\s{2}\}/)?.[1];
+    expect(buildPlacePayload).toContain('allowCurrentFallback && hasValidCoordinates(position)');
+    expect(buildPlacePayload).toContain("throw new Error('No he podido ubicar este lugar.");
+  });
 });

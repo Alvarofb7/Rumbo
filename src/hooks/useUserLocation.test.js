@@ -23,4 +23,10 @@ describe('location consent persistence', () => {
     expect(source).toContain('return { enabled: false, position: null };');
     expect(source).toContain('return { enabled: true, position: livePosition };');
   });
+
+  it('does not expose a fallback city as the current user position', () => {
+    expect(source).toContain('const initialPosition = null;');
+    expect(source).toContain('currentPositionRef.current = null;');
+    expect(source).toContain('setPosition(null);');
+  });
 });

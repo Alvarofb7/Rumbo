@@ -1,7 +1,7 @@
 export const defaultCenter = {
-  lat: 41.3851,
-  lng: 2.1734,
-  label: 'Barcelona',
+  lat: 40,
+  lng: -3.7,
+  label: 'España',
 };
 
 export const sourceMeta = {

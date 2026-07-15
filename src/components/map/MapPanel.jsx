@@ -13,6 +13,28 @@ function hasValidCoordinates(place) {
   return hasValidCoordinate(place?.lat) && hasValidCoordinate(place?.lng);
 }
 
+function numericPosition(position) {
+  return { lat: Number(position.lat), lng: Number(position.lng) };
+}
+
+export function getPlacesCenter(places = []) {
+  const positionedPlaces = places.filter(hasValidCoordinates);
+  if (!positionedPlaces.length) return null;
+  const totals = positionedPlaces.reduce(
+    (result, place) => ({ lat: result.lat + Number(place.lat), lng: result.lng + Number(place.lng) }),
+    { lat: 0, lng: 0 },
+  );
+  return { lat: totals.lat / positionedPlaces.length, lng: totals.lng / positionedPlaces.length };
+}
+
+export function getInitialMapView({ center, userPosition, places = [] }) {
+  if (hasValidCoordinates(center)) return { center: numericPosition(center), zoom: 14 };
+  if (hasValidCoordinates(userPosition)) return { center: numericPosition(userPosition), zoom: 14 };
+  const placesCenter = getPlacesCenter(places);
+  if (placesCenter) return { center: placesCenter, zoom: 12 };
+  return { center: defaultCenter, zoom: 6 };
+}
+
 function createMarkerContent({ color, selected = false, current = false }) {
   const marker = document.createElement('div');
   marker.className = current ? 'rumbo-google-marker rumbo-google-marker--current' : 'rumbo-google-marker';
@@ -52,7 +74,11 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
   const onSelectPlaceRef = useRef(onSelectPlace);
   const onSelectGooglePlaceRef = useRef(onSelectGooglePlace);
   const onViewportChangeRef = useRef(onViewportChange);
-  const latestCenterRef = useRef(center || userPosition || defaultCenter);
+  const initialView = getInitialMapView({ center, userPosition, places });
+  const latestCenterRef = useRef(initialView.center);
+  const latestZoomRef = useRef(initialView.zoom);
+  const hasCenteredOnUserRef = useRef(hasValidCoordinates(userPosition));
+  const hasCenteredOnPlacesRef = useRef(Boolean(getPlacesCenter(places)));
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState('');
 
@@ -69,8 +95,10 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
   }, [onViewportChange]);
 
   useEffect(() => {
-    latestCenterRef.current = center || userPosition || defaultCenter;
-  }, [center, userPosition]);
+    const view = getInitialMapView({ center, userPosition, places });
+    latestCenterRef.current = view.center;
+    latestZoomRef.current = view.zoom;
+  }, [center, places, userPosition]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,7 +116,7 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
         markerClassRef.current = AdvancedMarkerElement;
         mapRef.current = new Map(containerRef.current, {
           center: latestCenterRef.current,
-          zoom: 14,
+          zoom: latestZoomRef.current,
           mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID?.trim() || 'DEMO_MAP_ID',
           disableDefaultUI: true,
           clickableIcons: true,
@@ -134,6 +162,22 @@ export default function MapPanel({ places, selectedPlace, userPosition, center, 
     mapRef.current.panTo({ lat: Number(center.lat), lng: Number(center.lng) });
     if ((mapRef.current.getZoom() || 0) < 13) mapRef.current.setZoom(14);
   }, [center, mapReady]);
+
+  useEffect(() => {
+    if (center || !mapReady || !mapRef.current || hasCenteredOnUserRef.current || !hasValidCoordinates(userPosition)) return;
+    hasCenteredOnUserRef.current = true;
+    mapRef.current.panTo(numericPosition(userPosition));
+    mapRef.current.setZoom(14);
+  }, [center, mapReady, userPosition]);
+
+  useEffect(() => {
+    if (center || hasValidCoordinates(userPosition) || !mapReady || !mapRef.current || hasCenteredOnPlacesRef.current) return;
+    const placesCenter = getPlacesCenter(places);
+    if (!placesCenter) return;
+    hasCenteredOnPlacesRef.current = true;
+    mapRef.current.panTo(placesCenter);
+    mapRef.current.setZoom(12);
+  }, [center, mapReady, places, userPosition]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current || !markerClassRef.current) return undefined;
