@@ -46,3 +46,9 @@ export function getSafeExternalPlaceUrl(rawUrl) {
     return '';
   }
 }
+
+export function getPlaceProviderId(rawUrl) {
+  const url = new URL(normalizeSupportedPlaceUrl(rawUrl));
+  if (/tripadvisor\./i.test(url.hostname)) return url.pathname.match(/(?:^|-)d(\d+)(?:-|$)/i)?.[1] || '';
+  return url.searchParams.get('cid') || url.searchParams.get('place_id') || '';
+}

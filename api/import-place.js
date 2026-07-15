@@ -1,5 +1,8 @@
-import { inferPlaceCategory, normalizePlaceTags } from '../src/lib/placeData.js';
-import { ImportSecurityError, createBestEffortRateLimiter, fetchSafeHtml, verifyFirebaseIdToken } from './importSecurity.js';
+import { inferPlaceCategory, normalizeImportedPlace, normalizePlaceTags } from '../src/lib/placeData.js';
+import { parsePlaceLink } from '../src/lib/linkParser.js';
+import { normalizeImportPreview } from '../src/lib/importPreview.js';
+import { getPlaceProviderId, normalizeSupportedPlaceUrl } from '../src/lib/placeUrl.js';
+import { ImportProviderError, ImportSecurityError, createBestEffortRateLimiter, fetchFixedJson, fetchSafeHtml, verifyFirebaseIdToken } from './importSecurity.js';
 
 const sourceMatchers = [
   { sourceType: 'instagram', patterns: ['instagram.com'] },
@@ -157,6 +160,64 @@ function getGooglePlacesApiKey() {
 
 function getTripadvisorApiKey() {
   return getServerEnv('TRIPADVISOR_API_KEY') || getServerEnv('VITE_TRIPADVISOR_API_KEY');
+}
+
+function toLegacyPlace(preview) {
+  return { ...preview, ...preview.place, name: preview.place.title, sourceType: preview.source.provider, sourceUrl: preview.source.canonicalUrl, resolvedUrl: preview.source.resolvedUrl || preview.source.canonicalUrl };
+}
+
+function metadataPlace(html = '') {
+  const metadata = parseMetadata(html);
+  return { title: metadata.name, address: metadata.address, zone: '', tags: [], rating: 0 };
+}
+
+function localFallback(rawUrl) {
+  const place = parsePlaceLink(rawUrl);
+  return { title: place.title, address: place.address, zone: place.zone, lat: place.lat, lng: place.lng, category: place.category, tags: place.tags, rating: place.rating };
+}
+
+export function tripadvisorDetailsPath(providerId) {
+  if (!/^\d+$/.test(providerId)) throw new ImportSecurityError(400, 'El enlace no es compatible con la importación segura.');
+  return `/api/v1/location/${providerId}/details?language=es`;
+}
+
+function safeResolutionFailure() {
+  return new ImportSecurityError(502, 'No se pudo consultar el enlace en este momento.');
+}
+
+function rethrowHardFailure(error) {
+  if (!(error instanceof ImportProviderError)) throw safeResolutionFailure();
+}
+
+export async function resolveImportPreview(rawUrl, { officialAdapters = {}, metadata, geocoder, lookup } = {}) {
+  let canonicalUrl;
+  try { canonicalUrl = normalizeSupportedPlaceUrl(rawUrl); } catch (error) { throw new ImportSecurityError(400, error.message); }
+  const provider = inferSource(canonicalUrl);
+  if (!['google', 'apple', 'tripadvisor'].includes(provider)) throw new ImportSecurityError(400, 'El enlace no es compatible con la importación segura.');
+  const source = { provider, inputUrl: rawUrl, canonicalUrl, resolvedUrl: canonicalUrl, providerId: getPlaceProviderId(canonicalUrl) };
+  const adapter = officialAdapters[provider];
+  if (adapter) {
+    try {
+      const place = await adapter({ url: canonicalUrl, providerId: source.providerId });
+      if (place) return normalizeImportPreview({ source, place, provenance: 'official_api' });
+    } catch (error) { rethrowHardFailure(error); }
+  }
+  let metadataCandidate;
+  if (metadata) {
+    try { metadataCandidate = await metadata(canonicalUrl, { lookup }); } catch (error) { rethrowHardFailure(error); }
+    if (metadataCandidate) {
+      const normalized = { ...localFallback(canonicalUrl), ...metadataCandidate };
+      if (normalized.lat !== '' && normalized.lng !== '' && Number.isFinite(Number(normalized.lat)) && Number.isFinite(Number(normalized.lng))) return normalizeImportPreview({ source, place: normalized, provenance: 'metadata', coordinateQuality: 'approximate' });
+      if (geocoder) {
+        try {
+          const geocoded = await geocoder(normalized, { lookup });
+          if (geocoded) return normalizeImportPreview({ source, place: { ...normalized, ...geocoded }, provenance: 'geocoder' });
+        } catch (error) { rethrowHardFailure(error); }
+      }
+      return normalizeImportPreview({ source, place: normalized, provenance: 'metadata' });
+    }
+  }
+  return normalizeImportPreview({ source, place: localFallback(canonicalUrl), provenance: 'local_parser', coordinateQuality: 'approximate' });
 }
 
 function normalizeForMatch(value = '') {
@@ -426,6 +487,44 @@ async function enrichPlace(basePlace) {
 }
 
 export async function buildImportedPlace(rawUrl, options = {}) {
+  if (!options.legacyEnrichment) {
+    const googleKey = getGooglePlacesApiKey();
+    const tripadvisorKey = getTripadvisorApiKey();
+    const { apple: _ignoredAppleAdapter, ...injectedOfficialAdapters } = options.officialAdapters || {};
+    const constrainedGeocoder = options.geocoder || (async (place) => {
+      const path = new URL('/search', 'https://nominatim.openstreetmap.org');
+      path.searchParams.set('format', 'jsonv2');
+      path.searchParams.set('limit', '1');
+      path.searchParams.set('q', [place.title, place.address, place.zone].filter(Boolean).join(', '));
+      const results = await fetchFixedJson('https://nominatim.openstreetmap.org', `${path.pathname}${path.search}`, { lookup: options.lookup, headers: { 'user-agent': 'RumboPersonalApp/1.0' } });
+      const result = results?.[0];
+      return result && Number.isFinite(Number(result.lat)) && Number.isFinite(Number(result.lon)) ? { lat: Number(result.lat), lng: Number(result.lon) } : null;
+    });
+    const preview = await resolveImportPreview(rawUrl, {
+      lookup: options.lookup,
+      officialAdapters: {
+        google: injectedOfficialAdapters.google || (googleKey ? async () => {
+          const data = await fetchFixedJson('https://places.googleapis.com', '/v1/places:searchText', {
+            method: 'POST', body: JSON.stringify({ textQuery: rawUrl, languageCode: 'es', pageSize: 1 }),
+            headers: { 'content-type': 'application/json', 'x-goog-api-key': googleKey, 'x-goog-fieldmask': 'places.displayName,places.formattedAddress,places.location,places.primaryType,places.types,places.rating' },
+          });
+          const place = data.places?.[0];
+          return place && normalizeImportedPlace({ title: cleanName(place.displayName?.text || ''), address: normalizeCityName(place.formattedAddress || ''), zone: '', lat: place.location?.latitude, lng: place.location?.longitude, providerType: place.primaryType, types: place.types, rating: place.rating });
+        } : undefined),
+        tripadvisor: injectedOfficialAdapters.tripadvisor || (tripadvisorKey ? async ({ providerId }) => {
+          const path = tripadvisorDetailsPath(providerId);
+          const data = await fetchFixedJson('https://api.content.tripadvisor.com', `${path}&key=${encodeURIComponent(tripadvisorKey)}`, {});
+          return { title: cleanName(data.name), address: formatTripadvisorAddress(data.address_obj), zone: data.address_obj?.city || '', lat: data.latitude, lng: data.longitude, rating: data.rating };
+        } : undefined),
+      },
+      metadata: options.metadata || (async (url) => {
+        const fetched = await fetchSafeHtml(url, options);
+        return metadataPlace(fetched.html);
+      }),
+      geocoder: constrainedGeocoder,
+    });
+    return toLegacyPlace(preview);
+  }
   const fetched = await fetchSafeHtml(rawUrl, options);
   const normalizedUrl = fetched.finalUrl;
   const resolvedUrl = fetched.finalUrl || normalizedUrl;
@@ -527,7 +626,7 @@ export function createImportHandler({ rateLimiter = importRateLimiter, verifyTok
         resolved: Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lng)),
       }),
     );
-    response.status(200).json(place);
+    response.status(200).json(place?.source && place?.place ? toLegacyPlace(place) : place);
   } catch (error) {
     const publicError = toPublicImportError(error);
     console.error(
@@ -536,7 +635,7 @@ export function createImportHandler({ rateLimiter = importRateLimiter, verifyTok
         message: 'import_failed',
         requestId,
         durationMs: Date.now() - startedAt,
-        error: error?.message || 'Unknown import error',
+        errorCode: publicError.status,
       }),
     );
     response.status(publicError.status).json({ error: publicError.message });

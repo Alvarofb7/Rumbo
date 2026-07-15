@@ -158,6 +158,11 @@ export function sanitizePlaceRecord(record = {}) {
   };
 }
 
+export function normalizeImportedPlace(record = {}) {
+  const place = record.place || record;
+  return { ...sanitizePlaceRecord({ ...record, ...place, title: place.title || place.name || '', name: place.name || place.title || '' }), rating: normalizePlaceRating(place.rating) };
+}
+
 export function getPlaceRecordMigration(record = {}) {
   const sanitized = sanitizePlaceRecord(record);
   const remove = [];
