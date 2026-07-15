@@ -11,6 +11,14 @@ describe('PWA update strategy', () => {
     expect(serviceWorker).not.toContain('skipWaiting');
   });
 
+  it('binds cache writes and client claiming to service-worker event lifetimes', () => {
+    const serviceWorker = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+
+    expect(serviceWorker).toContain('.then(() => self.clients.claim())');
+    expect(serviceWorker.match(/event\.waitUntil\(caches\.open\(CACHE_NAME\)/g)).toHaveLength(2);
+    expect(serviceWorker).toContain('event.respondWith(');
+  });
+
   it('checks for fresh workers without interrupting an open iPhone session', () => {
     const main = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 

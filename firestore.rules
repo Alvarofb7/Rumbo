@@ -2,8 +2,79 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function validCoordinate(value, minimum, maximum) {
+      return value is number && value >= minimum && value <= maximum;
+    }
+
+    function validCoordinates(data, allowEmpty) {
+      return (allowEmpty && data.lat == '' && data.lng == '')
+        || (validCoordinate(data.lat, -90, 90) && validCoordinate(data.lng, -180, 180));
+    }
+
+    function validTagValues(tags) {
+      return tags is list && tags.size() <= 20;
+    }
+
+    function validOptionalString(data, field, maximum) {
+      return data.get(field, '') is string && data.get(field, '').size() <= maximum;
+    }
+
+    function validCommonFields(data, titleField, allowEmptyCoordinates) {
+      return data[titleField] is string && data[titleField].size() > 0 && data[titleField].size() <= 180
+        && data.address is string && data.address.size() <= 360
+        && data.zone is string && data.zone.size() <= 120
+        && validCoordinates(data, allowEmptyCoordinates)
+        && data.category in ['bar', 'restaurant', 'cafe', 'bakery', 'market', 'other']
+        && validTagValues(data.tags)
+        && data.rating is number && data.rating >= 0 && data.rating <= 5
+        && data.sourceType in ['google', 'apple', 'instagram', 'tripadvisor', 'manual']
+        && validOptionalString(data, 'sourceUrl', 2048)
+        && validOptionalString(data, 'resolvedUrl', 2048)
+        && validOptionalString(data, 'providerPlaceId', 256)
+        && validOptionalString(data, 'providerType', 128)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function placeFields() {
+      return ['name', 'address', 'zone', 'lat', 'lng', 'category', 'tags', 'rating', 'status', 'sourceType', 'sourceUrl', 'resolvedUrl', 'providerPlaceId', 'providerType', 'createdAt', 'updatedAt'];
+    }
+
+    function inboxFields() {
+      return ['title', 'address', 'zone', 'lat', 'lng', 'category', 'tags', 'rating', 'sourceType', 'sourceUrl', 'resolvedUrl', 'providerPlaceId', 'providerType', 'createdAt', 'updatedAt'];
+    }
+
+    function validPlace(data) {
+      return data.keys().hasAll(['name', 'address', 'zone', 'lat', 'lng', 'category', 'tags', 'rating', 'status', 'sourceType', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(placeFields())
+        && validCommonFields(data, 'name', false)
+        && data.status in ['wishlist', 'visited', 'favorite', 'discarded'];
+    }
+
+    function validInbox(data) {
+      return data.keys().hasAll(['title', 'address', 'zone', 'lat', 'lng', 'category', 'tags', 'rating', 'sourceType', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(inboxFields())
+        && validCommonFields(data, 'title', true);
+    }
+
+    match /users/{userId}/places/{placeId} {
+      allow read, delete: if isOwner(userId);
+      allow create: if isOwner(userId) && validPlace(request.resource.data);
+      allow update: if isOwner(userId)
+        && validPlace(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    match /users/{userId}/inbox/{inboxId} {
+      allow read, delete: if isOwner(userId);
+      allow create: if isOwner(userId) && validInbox(request.resource.data);
+      allow update: if isOwner(userId)
+        && validInbox(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt;
     }
   }
 }

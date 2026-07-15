@@ -20,13 +20,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import CloseIcon from '@mui/icons-material/Close';
 import { useTheme } from '@mui/material/styles';
 import { captureDiagnostic } from '../../lib/diagnostics';
-
-function looksLikeUrl(value) {
-  const trimmed = value.trim();
-  if (/^https?:\/\//i.test(trimmed)) return true;
-  if (/^(www\.|maps\.|goo\.gl\/|maps\.app\.goo\.gl)/i.test(trimmed)) return true;
-  return /^[^\s]+\.[^\s]{2,}/.test(trimmed);
-}
+import { isSafeSupportedPlaceUrl } from '../../lib/placeUrl';
 
 export default function LinkImportDialog({ open, onClose, onImport }) {
   const theme = useTheme();
@@ -34,7 +28,7 @@ export default function LinkImportDialog({ open, onClose, onImport }) {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const isUrl = useMemo(() => looksLikeUrl(query), [query]);
+  const isUrl = useMemo(() => isSafeSupportedPlaceUrl(query), [query]);
 
   useEffect(() => {
     if (!open) {

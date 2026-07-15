@@ -27,6 +27,7 @@ import { useTheme } from '@mui/material/styles';
 import { statusOptions, tagOptions } from '../../data/demoData';
 import { captureDiagnostic, recordBreadcrumb } from '../../lib/diagnostics';
 import { inferSourceType } from '../../lib/linkParser';
+import { normalizeSupportedPlaceUrl } from '../../lib/placeUrl';
 import { categoryOptions, inferPlaceCategory, normalizePlaceRating, normalizePlaceTags } from '../../lib/placeData';
 import {
   createPlaceSearchSession,
@@ -78,6 +79,13 @@ const compactFieldSx = {
 
 function hasUsableCoordinates(lat, lng) {
   return lat !== '' && lng !== '' && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
+}
+
+export function getPlaceValidationErrors(place) {
+  return {
+    location: hasUsableCoordinates(place?.lat, place?.lng) ? '' : 'Elige un resultado de ubicación antes de guardar.',
+    name: place?.name?.trim() ? '' : 'Añade un nombre para guardar el lugar.',
+  };
 }
 
 function PersonalRating({ value, onChange }) {
@@ -167,7 +175,11 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
   const [locationOptions, setLocationOptions] = useState([]);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState('');
+  const [formErrors, setFormErrors] = useState({ location: '', name: '', sourceUrl: '' });
+  const [saving, setSaving] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const locationInputRef = useRef(null);
+  const nameInputRef = useRef(null);
   const fixedLocationQueryRef = useRef('');
   const autoFilledNameRef = useRef('');
   const locationRequestIdRef = useRef(0);
@@ -189,6 +201,8 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       setLocationOptions([]);
       setLocationLoading(false);
       setLocationError('');
+      setFormErrors({ location: '', name: '', sourceUrl: '' });
+      setSaving(false);
       setDetailsOpen(false);
     }
   }, [open, place]);
@@ -243,6 +257,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
 
   function update(field, value) {
     if (field === 'name') autoFilledNameRef.current = '';
+    if (field === 'name' && value.trim()) setFormErrors((current) => ({ ...current, name: '' }));
     setDraft((current) => ({ ...current, [field]: value }));
   }
 
@@ -312,6 +327,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
           providerType: resolved.providerType || resolved.type || '',
         };
       });
+      setFormErrors((current) => ({ ...current, location: '', name: '' }));
     } catch (error) {
       if (requestId === locationRequestIdRef.current) {
         captureDiagnostic('search.form.resolve', error);
@@ -323,10 +339,26 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
   }
 
   async function handleSave() {
-    if (!draft.name.trim()) return;
+    const nextErrors = getPlaceValidationErrors(draft);
+    setFormErrors(nextErrors);
+    if (nextErrors.location) {
+      locationInputRef.current?.focus();
+      return;
+    }
+    if (nextErrors.name) {
+      setDetailsOpen(true);
+      window.requestAnimationFrame(() => nameInputRef.current?.focus());
+      return;
+    }
+    let sourceUrl = '';
+    try { sourceUrl = draft.sourceUrl.trim() ? normalizeSupportedPlaceUrl(draft.sourceUrl) : ''; } catch (error) {
+      setDetailsOpen(true);
+      setFormErrors((current) => ({ ...current, sourceUrl: error.message }));
+      return;
+    }
     const category = inferPlaceCategory(draft);
-    const sourceUrl = draft.sourceUrl.trim();
-    await onSave({
+    setSaving(true);
+    try { await onSave({
       ...draft,
       name: draft.name.trim(),
       address: draft.address.trim(),
@@ -337,12 +369,12 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       sourceType: sourceUrl ? inferSourceType(sourceUrl) : draft.sourceType || 'manual',
       sourceUrl,
       resolvedUrl: draft.resolvedUrl || '',
-    });
+    }); } finally { setSaving(false); }
   }
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
-      <DialogTitle sx={{ px: { xs: 2.25, sm: 3 }, pb: 1 }}>
+      <DialogTitle sx={{ px: { xs: 2.25, sm: 3 }, pt: { xs: 'calc(16px + env(safe-area-inset-top))', sm: 2 }, pb: 1 }}>
         <Stack direction="row" spacing={1.5} alignItems="center">
           <Box sx={{ flex: 1 }}>
             <Typography variant="h3">{draft.id ? 'Editar lugar' : 'Guardar lugar'}</Typography>
@@ -413,9 +445,11 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
                 renderInput={(params) => (
                   <TextField
                     {...params}
+                    inputRef={locationInputRef}
                     label="Buscar sitio"
                     placeholder="Nombre del bar o dirección"
-                    helperText={hasSelectedLocation() ? draft.address : 'Elige un resultado para fijarlo en el mapa.'}
+                    error={Boolean(formErrors.location)}
+                    helperText={formErrors.location || (hasSelectedLocation() ? draft.address : 'Elige un resultado para fijarlo en el mapa.')}
                     sx={compactFieldSx}
                   />
                 )}
@@ -460,7 +494,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
                 <Typography fontWeight={850} sx={{ mb: 0.8 }}>
                   Estado
                 </Typography>
-                <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap" sx={{ '& .MuiButton-root': { minWidth: 0 } }}>
+                <Stack role="radiogroup" aria-label="Estado del lugar" direction="row" spacing={0.8} useFlexGap flexWrap="wrap" sx={{ '& .MuiButton-root': { minWidth: 0 } }}>
                   {statusOptions
                     .filter((status) => status.value !== 'discarded')
                     .map((status) => {
@@ -468,10 +502,12 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
                       return (
                         <Button
                           key={status.value}
+                          role="radio"
+                          aria-checked={selected}
                           variant={selected ? 'contained' : 'outlined'}
                           onClick={() => update('status', status.value)}
                           sx={{
-                            minHeight: 38,
+                            minHeight: 44,
                             px: 1.4,
                             bgcolor: selected ? status.color : 'transparent',
                             borderColor: `${status.color}55`,
@@ -525,7 +561,17 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
           <Collapse in={detailsOpen} unmountOnExit>
             <Paper variant="outlined" sx={formCardSx}>
               <Stack spacing={1.4}>
-                <TextField label="Nombre" value={draft.name} onChange={(event) => update('name', event.target.value)} required fullWidth sx={compactFieldSx} />
+                <TextField
+                  inputRef={nameInputRef}
+                  label="Nombre"
+                  value={draft.name}
+                  onChange={(event) => update('name', event.target.value)}
+                  required
+                  error={Boolean(formErrors.name)}
+                  helperText={formErrors.name}
+                  fullWidth
+                  sx={compactFieldSx}
+                />
                 <TextField label="Zona o barrio" value={draft.zone} onChange={(event) => update('zone', event.target.value)} fullWidth sx={compactFieldSx} />
                 <Stack direction="row" spacing={1} alignItems="center">
                   <LinkIcon color="primary" />
@@ -534,7 +580,9 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
                 <TextField
                   label="Maps, Tripadvisor o Instagram"
                   value={draft.sourceUrl}
-                  onChange={(event) => update('sourceUrl', event.target.value)}
+                  onChange={(event) => { update('sourceUrl', event.target.value); setFormErrors((current) => ({ ...current, sourceUrl: '' })); }}
+                  error={Boolean(formErrors.sourceUrl)}
+                  helperText={formErrors.sourceUrl}
                   fullWidth
                   sx={compactFieldSx}
                 />
@@ -545,7 +593,7 @@ export default function PlaceDialog({ open, place, onClose, onSave, searchBias }
       </DialogContent>
       <DialogActions sx={{ px: { xs: 2.25, sm: 3 }, py: 2, pb: `calc(16px + env(safe-area-inset-bottom))` }}>
         <Button onClick={onClose}>Cancelar</Button>
-        <Button variant="contained" onClick={handleSave} disabled={!draft.name.trim() || !hasSelectedLocation()}>
+        <Button variant="contained" onClick={handleSave} disabled={saving}>
           Guardar lugar
         </Button>
       </DialogActions>

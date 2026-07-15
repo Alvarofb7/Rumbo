@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { readStorageJson, writeStorageJson } from '../lib/storage';
 
 const identity = (item) => item;
 
@@ -7,23 +8,22 @@ export function useLocalCollection(storageKey, initialItems = [], normalizeItem 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = localStorage.getItem(storageKey);
-    if (stored) {
-      const normalized = JSON.parse(stored).map(normalizeItem);
+    try {
+      const stored = readStorageJson(storageKey, null, { validate: Array.isArray, quarantine: true });
+      const normalized = (stored || initialItems).map(normalizeItem);
       setItems(normalized);
-      localStorage.setItem(storageKey, JSON.stringify(normalized));
-    } else {
-      const normalized = initialItems.map(normalizeItem);
-      setItems(normalized);
-      localStorage.setItem(storageKey, JSON.stringify(normalized));
+      writeStorageJson(storageKey, normalized);
+    } catch {
+      setItems(initialItems.map(normalizeItem));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [initialItems, normalizeItem, storageKey]);
 
   const persist = useCallback(
     (nextItems) => {
+      if (!writeStorageJson(storageKey, nextItems)) throw new Error('No se han podido guardar los cambios en este dispositivo.');
       setItems(nextItems);
-      localStorage.setItem(storageKey, JSON.stringify(nextItems));
     },
     [storageKey],
   );
@@ -45,8 +45,11 @@ export function useLocalCollection(storageKey, initialItems = [], normalizeItem 
 
   const updateItem = useCallback(
     async (id, patch) => {
+      const safePatch = { ...patch };
+      delete safePatch.createdAt;
+      delete safePatch.updatedAt;
       const nextItems = items.map((item) =>
-        item.id === id ? normalizeItem({ ...item, ...patch, updatedAt: new Date().toISOString() }) : item,
+        item.id === id ? normalizeItem({ ...item, ...safePatch, updatedAt: new Date().toISOString() }) : item,
       );
       persist(nextItems);
       return nextItems.find((item) => item.id === id);

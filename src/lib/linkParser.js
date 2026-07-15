@@ -4,6 +4,7 @@ const sourceMatchers = [
   { sourceType: 'apple', patterns: ['maps.apple.com'] },
   { sourceType: 'google', patterns: ['google.com/maps', 'maps.google.', 'goo.gl/maps', 'maps.app.goo.gl'] },
 ];
+import { normalizeSupportedPlaceUrl } from './placeUrl';
 
 function cleanTitle(value) {
   let decoded = value || '';
@@ -96,17 +97,8 @@ function inferTags(title) {
 }
 
 export function parsePlaceLink(rawUrl, fallbackPosition = null) {
-  const input = rawUrl.trim();
-  if (!input) throw new Error('Pega un enlace válido.');
-
-  const normalizedUrl = input.startsWith('http') ? input : `https://${input}`;
-  let parsedUrl;
-
-  try {
-    parsedUrl = new URL(normalizedUrl);
-  } catch {
-    throw new Error('No parece un enlace válido.');
-  }
+  const normalizedUrl = normalizeSupportedPlaceUrl(rawUrl);
+  const parsedUrl = new URL(normalizedUrl);
 
   const sourceType = inferSourceType(normalizedUrl);
   const title = inferTitle(parsedUrl, sourceType);

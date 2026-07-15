@@ -43,7 +43,7 @@ describe('iPhone-first safeguards', () => {
     expect(read('src/theme.js')).toContain('MuiIconButton');
     expect(read('src/components/cards/GooglePlaceCard.jsx')).toContain('Guardar rápido');
     expect(read('src/components/navigation/AppMenuDrawer.jsx')).toContain('Importar enlace');
-    expect(read('src/components/MainApp.jsx')).toContain('Deshacer');
+    expect(read('src/components/feedback/AppToast.jsx')).toContain('Deshacer');
   });
 
   it('collects real iPhone performance and shareable diagnostics', () => {

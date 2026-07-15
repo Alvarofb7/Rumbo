@@ -4,6 +4,7 @@ import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { theme } from './theme';
 import { useAuth } from './context/AuthContext';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 
 const LoginScreen = lazy(() => import('./components/LoginScreen'));
 const MainApp = lazy(() => import('./components/MainApp'));
@@ -21,7 +22,7 @@ export default function App() {
           </Box>
         }
       >
-        {loading || !user ? <LoginScreen loading={loading} /> : <MainApp />}
+        {loading || !user ? <LoginScreen loading={loading} /> : <AppErrorBoundary resetKey={user.uid}><MainApp /></AppErrorBoundary>}
       </Suspense>
       <Analytics />
       <SpeedInsights />

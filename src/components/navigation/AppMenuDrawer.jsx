@@ -24,16 +24,21 @@ import StorageIcon from '@mui/icons-material/Storage';
 import SyncIcon from '@mui/icons-material/Sync';
 import { useAuth } from '../../context/AuthContext';
 import { captureDiagnostic, getDiagnostics, shareDiagnostics } from '../../lib/diagnostics';
+import { LocationPrivacySettings } from '../privacy/LocationPrivacy';
 
 export default function AppMenuDrawer({
   stats,
   places,
   inbox,
   syncState,
+  locationConsent,
+  locationStatus,
   onClose,
   onImportLink,
   onOpenReview,
   onRetrySync,
+  onEnableLocation,
+  onDisableLocation,
 }) {
   const { user, signOut } = useAuth();
   const diagnosticCount = getDiagnostics().reduce((total, incident) => total + Number(incident.count || 1), 0);
@@ -73,8 +78,9 @@ export default function AppMenuDrawer({
   const syncMeta = {
     synced: { label: 'Sincronizado', description: 'Todos los cambios están guardados.', icon: <CloudDoneIcon color="success" /> },
     pending: { label: 'Guardando…', description: 'Hay cambios pendientes de subir.', icon: <CloudSyncIcon color="warning" /> },
+    reconnecting: { label: 'Reconectando…', description: 'Se está restableciendo la conexión con tus datos.', icon: <CloudSyncIcon color="warning" /> },
     offline: { label: 'Sin conexión', description: 'Los cambios se subirán cuando vuelva la red.', icon: <CloudOffIcon color="warning" /> },
-    error: { label: 'Error de sincronización', description: syncState.error || 'Toca para volver a intentarlo.', icon: <CloudOffIcon color="error" /> },
+    error: { label: 'Error de sincronización', description: 'No se han podido sincronizar los cambios. Vuelve a conectar.', icon: <CloudOffIcon color="error" /> },
     local: { label: 'Modo local', description: 'Los datos se guardan en este dispositivo.', icon: <StorageIcon color="warning" /> },
   }[syncState.status];
 
@@ -120,6 +126,15 @@ export default function AppMenuDrawer({
 
         <Divider />
 
+        <LocationPrivacySettings
+          consent={locationConsent}
+          status={locationStatus}
+          onEnable={onEnableLocation}
+          onDisable={onDisableLocation}
+        />
+
+        <Divider />
+
         <Stack spacing={1.2}>
           <Stack direction="row" spacing={1.2} alignItems="center">
             {syncMeta.icon}
@@ -131,9 +146,9 @@ export default function AppMenuDrawer({
             </Box>
           </Stack>
 
-          {['pending', 'offline', 'error'].includes(syncState.status) && (
+          {['offline', 'error'].includes(syncState.status) && (
             <Button variant="outlined" startIcon={<SyncIcon />} onClick={onRetrySync}>
-              Reintentar sincronización
+              Reconectar sincronización
             </Button>
           )}
 
