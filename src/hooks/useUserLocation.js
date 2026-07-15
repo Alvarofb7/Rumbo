@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { defaultCenter } from '../data/demoData';
 import { captureDiagnostic } from '../lib/diagnostics';
 import { distanceInMeters } from '../lib/geo';
 import { readStorageJson, removeStorageValue, writeStorageJson } from '../lib/storage';
@@ -30,7 +29,7 @@ function hasMovedEnough(previousPosition, nextPosition) {
 export function useUserLocation() {
   const initialConsent = readLocationConsent();
   const manualPositionRef = useRef(null);
-  const initialPosition = defaultCenter;
+  const initialPosition = null;
   const currentPositionRef = useRef(initialPosition);
   const livePositionVersionRef = useRef(0);
   const consentRef = useRef(initialConsent);
@@ -181,9 +180,9 @@ export function useUserLocation() {
     }
     consentRef.current = false;
     manualPositionRef.current = null;
-    currentPositionRef.current = defaultCenter;
+    currentPositionRef.current = null;
     setConsent(false);
-    setPosition(defaultCenter);
+    setPosition(null);
     setStatus('idle');
     setError('La ubicación está desactivada. Puedes activarla cuando quieras.');
     return true;

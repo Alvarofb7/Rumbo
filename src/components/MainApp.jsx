@@ -182,6 +182,10 @@ export default function MainApp() {
   const [locationConsentOpen, setLocationConsentOpen] = useState(false);
   const googlePlaceRequestRef = useRef(0);
 
+  useEffect(() => {
+    if (locationConsent === null) setLocationConsentOpen(true);
+  }, [locationConsent]);
+
   const places = placesStore.items;
   const inbox = inboxStore.items;
   const listedFilters = useMemo(() => ({ ...initialFilters, sort: listSort }), [listSort]);
@@ -320,7 +324,7 @@ export default function MainApp() {
       }
     }
 
-    if (!hasValidCoordinates(coordinates) && allowCurrentFallback) {
+    if (!hasValidCoordinates(coordinates) && allowCurrentFallback && hasValidCoordinates(position)) {
       coordinates = { lat: position.lat, lng: position.lng };
       approximate = true;
     }
@@ -636,6 +640,10 @@ export default function MainApp() {
     setSelectedPlaceId(null);
     const livePosition = await requestLivePosition();
     const nextPosition = livePosition || position;
+    if (!hasValidCoordinates(nextPosition)) {
+      recordBreadcrumb('location.button.completed', { live: false, available: false });
+      return;
+    }
     setMapCenter({ lat: nextPosition.lat, lng: nextPosition.lng });
     recordBreadcrumb('location.button.completed', { live: Boolean(livePosition) });
   }
