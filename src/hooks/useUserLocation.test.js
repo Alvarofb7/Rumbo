@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { persistLocationConsent, readLocationConsent } from './useUserLocation';
+
+const source = readFileSync(new URL('./useUserLocation.js', import.meta.url), 'utf8');
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -14,5 +17,10 @@ describe('location consent persistence', () => {
 
     expect(persistLocationConsent(false)).toBe(false);
     expect(readLocationConsent()).toBe(true);
+  });
+
+  it('uses an explicit result shape so consent success is not confused with position availability', () => {
+    expect(source).toContain('return { enabled: false, position: null };');
+    expect(source).toContain('return { enabled: true, position: livePosition };');
   });
 });

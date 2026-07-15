@@ -641,11 +641,13 @@ export default function MainApp() {
   }
 
   async function activateLocation() {
-    const livePosition = await enableLocation();
-    if (!livePosition) return;
+    const locationResult = await enableLocation();
+    if (!locationResult.enabled) return;
     recordBreadcrumb('location.consent.enabled');
     setLocationConsentOpen(false);
-    if (livePosition) setMapCenter({ lat: livePosition.lat, lng: livePosition.lng });
+    if (locationResult.position) {
+      setMapCenter({ lat: locationResult.position.lat, lng: locationResult.position.lng });
+    }
   }
 
   async function retrySync() {

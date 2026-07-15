@@ -163,14 +163,15 @@ export function useUserLocation() {
     });
   }
 
-  function enableLocation() {
+  async function enableLocation() {
     if (!persistLocationConsent(true)) {
       setError('No pude guardar tu preferencia de ubicación. Inténtalo de nuevo.');
-      return Promise.resolve(null);
+      return { enabled: false, position: null };
     }
     consentRef.current = true;
     setConsent(true);
-    return requestLivePosition({ consentOverride: true });
+    const livePosition = await requestLivePosition({ consentOverride: true });
+    return { enabled: true, position: livePosition };
   }
 
   function disableLocation() {

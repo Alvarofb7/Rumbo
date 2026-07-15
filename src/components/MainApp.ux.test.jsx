@@ -52,11 +52,11 @@ describe('remaining UX and privacy integrations', () => {
     expect(authSource).toContain("if (user?.isLocal && !removeStorageValue(localUserKey)) throw new Error");
   });
 
-  it('only confirms location consent after enablement succeeds', () => {
+  it('confirms durable consent independently from live-position acquisition', () => {
     const activateLocation = mainSource.match(/async function activateLocation\(\) \{([\s\S]*?)\n\s{2}\}/)?.[1];
-    expect(activateLocation).toContain('const livePosition = await enableLocation();');
-    expect(activateLocation).toContain('if (!livePosition) return;');
-    expect(activateLocation.indexOf("recordBreadcrumb('location.consent.enabled')")).toBeGreaterThan(activateLocation.indexOf('if (!livePosition) return;'));
-    expect(activateLocation.indexOf('setLocationConsentOpen(false)')).toBeGreaterThan(activateLocation.indexOf('if (!livePosition) return;'));
+    expect(activateLocation).toContain('const locationResult = await enableLocation();');
+    expect(activateLocation).toContain('if (!locationResult.enabled) return;');
+    expect(activateLocation.indexOf("recordBreadcrumb('location.consent.enabled')")).toBeGreaterThan(activateLocation.indexOf('if (!locationResult.enabled) return;'));
+    expect(activateLocation).toContain('if (locationResult.position)');
   });
 });
