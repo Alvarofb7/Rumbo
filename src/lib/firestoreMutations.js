@@ -49,6 +49,29 @@ export async function commitFirestoreMutation({
   });
 }
 
+export async function commitDurableFirestoreMutation({
+  execute,
+  incrementPendingWrites,
+  decrementPendingWrites,
+  setSyncError,
+  captureDiagnostic,
+  diagnosticKey,
+  diagnosticContext,
+  fallbackMessage,
+}) {
+  incrementPendingWrites();
+  try {
+    const result = await execute();
+    return { committed: true, result };
+  } catch (error) {
+    captureDiagnostic(diagnosticKey, error, diagnosticContext);
+    setSyncError(error.message || fallbackMessage);
+    throw error;
+  } finally {
+    decrementPendingWrites();
+  }
+}
+
 export async function convertLocalInboxRecommendation({ inboxId, place, addPlace, deleteInbox }) {
   const created = await addPlace(place);
   await deleteInbox(inboxId);

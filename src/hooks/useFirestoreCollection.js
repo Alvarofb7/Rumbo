@@ -8,6 +8,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -17,6 +18,7 @@ import { db, isFirebaseConfigured } from '../lib/firebase';
 import { captureDiagnostic } from '../lib/diagnostics';
 import { serializeFirestoreDocument, withoutDocumentId } from '../lib/firestoreData';
 import {
+  commitDurableFirestoreMutation,
   commitFirestoreMutation,
   convertFirestoreInboxRecommendation,
   convertLocalInboxRecommendation,
@@ -24,6 +26,7 @@ import {
 import { useLocalCollection } from './useLocalCollection';
 
 const identity = (item) => item;
+const durableIdempotencyKeyPattern = /^import_[A-Za-z0-9_-]{16,96}$/;
 
 export function useUserCollection(user, collectionName, initialItems = [], options = {}) {
   const normalizeItem = options.normalizeItem || identity;
@@ -97,10 +100,16 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
   }, [collectionName, getMigration, normalizeItem, user]);
 
   const addItem = useCallback(
-    async (item) => {
-      if (!isFirebaseConfigured || !db || !user || user.isLocal) return local.addItem(item);
+    async (item, { durable = false, idempotencyKey } = {}) => {
+      if (!isFirebaseConfigured || !db || !user || user.isLocal) {
+        const created = await local.addItem(item);
+        return durable ? { ...created, committed: true } : created;
+      }
+      if (durable && idempotencyKey && !durableIdempotencyKeyPattern.test(idempotencyKey)) {
+        throw new Error('Invalid durable idempotency key');
+      }
       const ref = collection(db, 'users', user.uid, collectionName);
-      const created = item.id ? doc(ref, item.id) : doc(ref);
+      const created = durable && idempotencyKey ? doc(ref, idempotencyKey) : item.id ? doc(ref, item.id) : doc(ref);
       const data = withoutDocumentId(normalizeItem(item));
       delete data.createdAt;
       delete data.updatedAt;
@@ -109,6 +118,24 @@ export function useUserCollection(user, collectionName, initialItems = [], optio
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
+      if (durable) {
+        const result = await commitDurableFirestoreMutation({
+          execute: () => runTransaction(db, async (transaction) => {
+            const existing = await transaction.get(created);
+            if (existing.exists()) return { id: created.id };
+            transaction.set(created, payload);
+            return { id: created.id };
+          }),
+          incrementPendingWrites,
+          decrementPendingWrites,
+          setSyncError,
+          captureDiagnostic,
+          diagnosticKey: 'sync.create-durable',
+          diagnosticContext: { collection: collectionName },
+          fallbackMessage: 'No se ha podido confirmar la importación.',
+        });
+        return { ...item, id: created.id, committed: result.committed };
+      }
       const result = await commitFirestoreMutation({
         execute: () => setDoc(created, payload),
         incrementPendingWrites,

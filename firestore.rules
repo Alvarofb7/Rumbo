@@ -23,6 +23,61 @@ service cloud.firestore {
       return data.get(field, '') is string && data.get(field, '').size() <= maximum;
     }
 
+    function validImportWarnings(warnings) {
+      return warnings is list && warnings.size() <= 5
+        && warnings.toSet().hasOnly(['MISSING_COORDINATES', 'AMBIGUOUS_MATCH', 'APPROXIMATE_COORDINATES', 'METADATA_ONLY', 'LOCAL_FALLBACK']);
+    }
+
+    function validImportAcknowledgements(warnings) {
+      return warnings is list && warnings.size() <= 2
+        && warnings.toSet().hasOnly(['AMBIGUOUS_MATCH', 'APPROXIMATE_COORDINATES']);
+    }
+
+    function validImportQuality(quality) {
+      return quality is map
+        && quality.keys().hasAll(['confidence', 'coordinateQuality', 'provenance', 'warnings', 'ambiguity', 'verified'])
+        && quality.keys().hasOnly(['confidence', 'coordinateQuality', 'provenance', 'warnings', 'ambiguity', 'verified'])
+        && quality.confidence in ['high', 'medium', 'low']
+        && quality.coordinateQuality in ['exact', 'geocoded', 'approximate', 'missing']
+        && quality.provenance in ['official_api', 'geocoder', 'metadata', 'local_parser', 'place_search']
+        && validImportWarnings(quality.warnings)
+        && quality.ambiguity is bool
+        && quality.verified is bool;
+    }
+
+    function validImportSource(source) {
+      return source is map
+        && source.keys().hasAll(['provider', 'inputUrl', 'canonicalUrl', 'resolvedUrl', 'providerId'])
+        && source.keys().hasOnly(['provider', 'inputUrl', 'canonicalUrl', 'resolvedUrl', 'providerId'])
+        && source.provider is string && source.provider.size() <= 128
+        && source.inputUrl is string && source.inputUrl.size() <= 2048
+        && source.canonicalUrl is string && source.canonicalUrl.size() <= 2048
+        && source.resolvedUrl is string && source.resolvedUrl.size() <= 2048
+        && source.providerId is string && source.providerId.size() <= 256;
+    }
+
+    function validImportDuplicate(duplicate) {
+      return duplicate is map
+        && duplicate.keys().hasAll(['status', 'matchedCollection', 'matchedId', 'reasons'])
+        && duplicate.keys().hasOnly(['status', 'matchedCollection', 'matchedId', 'reasons'])
+        && duplicate.status in ['unchecked', 'none', 'possible', 'probable']
+        && (duplicate.matchedCollection == null || duplicate.matchedCollection in ['saved', 'inbox'])
+        && (duplicate.matchedId == null || (duplicate.matchedId is string && duplicate.matchedId.size() <= 256))
+        && duplicate.reasons is list && duplicate.reasons.size() <= 4
+        && duplicate.reasons.toSet().hasOnly(['providerPlaceId', 'sourceUrl', 'nearbyName', 'addressName']);
+    }
+
+    function validImportMetadata(data) {
+      let fields = ['importQuality', 'importWarnings', 'importAcknowledgedWarnings', 'importSource', 'importDuplicate'];
+      return !data.keys().hasAny(fields)
+        || (data.keys().hasAll(fields)
+          && validImportQuality(data.importQuality)
+          && validImportWarnings(data.importWarnings)
+          && validImportAcknowledgements(data.importAcknowledgedWarnings)
+          && validImportSource(data.importSource)
+          && validImportDuplicate(data.importDuplicate));
+    }
+
     function validCommonFields(data, titleField, allowEmptyCoordinates) {
       return data[titleField] is string && data[titleField].size() > 0 && data[titleField].size() <= 180
         && data.address is string && data.address.size() <= 360
@@ -45,7 +100,7 @@ service cloud.firestore {
     }
 
     function inboxFields() {
-      return ['title', 'address', 'zone', 'lat', 'lng', 'category', 'tags', 'rating', 'sourceType', 'sourceUrl', 'resolvedUrl', 'providerPlaceId', 'providerType', 'createdAt', 'updatedAt'];
+      return ['title', 'address', 'zone', 'lat', 'lng', 'category', 'tags', 'rating', 'sourceType', 'sourceUrl', 'resolvedUrl', 'providerPlaceId', 'providerType', 'importQuality', 'importWarnings', 'importAcknowledgedWarnings', 'importSource', 'importDuplicate', 'createdAt', 'updatedAt'];
     }
 
     function validPlace(data) {
@@ -58,7 +113,8 @@ service cloud.firestore {
     function validInbox(data) {
       return data.keys().hasAll(['title', 'address', 'zone', 'lat', 'lng', 'category', 'tags', 'rating', 'sourceType', 'createdAt', 'updatedAt'])
         && data.keys().hasOnly(inboxFields())
-        && validCommonFields(data, 'title', true);
+        && validCommonFields(data, 'title', true)
+        && validImportMetadata(data);
     }
 
     match /users/{userId}/places/{placeId} {

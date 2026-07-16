@@ -99,3 +99,27 @@ export function findDuplicatePlace(candidate = {}, places = [], options = {}) {
     return Boolean(getDuplicateMatch(candidate, place));
   }) || null;
 }
+
+export function getImportDuplicate(candidate = {}, savedPlaces = [], inbox = []) {
+  const previewCandidate = candidate.place
+    ? {
+        ...candidate.place,
+        providerPlaceId: candidate.source?.providerId || candidate.place.providerPlaceId,
+        sourceUrl: candidate.source?.canonicalUrl || candidate.place.sourceUrl,
+        resolvedUrl: candidate.source?.resolvedUrl || candidate.place.resolvedUrl,
+      }
+    : candidate;
+  const collections = [['saved', savedPlaces], ['inbox', inbox]];
+  for (const [matchedCollection, places] of collections) {
+    const match = findDuplicatePlace(previewCandidate, places);
+    if (!match) continue;
+    const reason = getDuplicateMatch(previewCandidate, match);
+    return {
+      status: ['providerPlaceId', 'sourceUrl'].includes(reason) ? 'probable' : 'possible',
+      matchedCollection,
+      matchedId: match.id || null,
+      reasons: [reason],
+    };
+  }
+  return { status: 'none', matchedCollection: null, matchedId: null, reasons: [] };
+}

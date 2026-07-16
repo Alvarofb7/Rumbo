@@ -1,11 +1,49 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  commitDurableFirestoreMutation,
   commitFirestoreMutation,
   convertFirestoreInboxRecommendation,
   convertLocalInboxRecommendation,
 } from './firestoreMutations';
 
 describe('Firestore mutations', () => {
+  it('rejects an unreachable durable write without issuing a queued optimistic outcome', async () => {
+    const unreachable = new Error('unavailable');
+    const incrementPendingWrites = vi.fn();
+    const decrementPendingWrites = vi.fn();
+    const setSyncError = vi.fn();
+
+    await expect(commitDurableFirestoreMutation({
+      execute: () => Promise.reject(unreachable),
+      incrementPendingWrites,
+      decrementPendingWrites,
+      setSyncError,
+      captureDiagnostic: vi.fn(),
+      diagnosticKey: 'sync.create-durable',
+      diagnosticContext: { collection: 'inbox' },
+      fallbackMessage: 'No se ha podido confirmar la importación.',
+    })).rejects.toThrow('unavailable');
+
+    expect(incrementPendingWrites).toHaveBeenCalledOnce();
+    expect(decrementPendingWrites).toHaveBeenCalledOnce();
+    expect(setSyncError).toHaveBeenCalledWith('unavailable');
+  });
+
+  it('returns an explicit committed outcome only after the durable write resolves', async () => {
+    const result = await commitDurableFirestoreMutation({
+      execute: () => Promise.resolve({ id: 'inbox-1' }),
+      incrementPendingWrites: vi.fn(),
+      decrementPendingWrites: vi.fn(),
+      setSyncError: vi.fn(),
+      captureDiagnostic: vi.fn(),
+      diagnosticKey: 'sync.create-durable',
+      diagnosticContext: { collection: 'inbox' },
+      fallbackMessage: 'No se ha podido confirmar la importación.',
+    });
+
+    expect(result).toEqual({ committed: true, result: { id: 'inbox-1' } });
+  });
+
   it('reports a rejected write, clears pending state, and rethrows it', async () => {
     const rejected = new Error('permission-denied');
     const incrementPendingWrites = vi.fn();
