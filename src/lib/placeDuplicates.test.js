@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findDuplicatePlace, getDuplicateMatch } from './placeDuplicates';
+import { findDuplicatePlace, getDuplicateMatch, getImportDuplicate } from './placeDuplicates';
 
 const savedPlaces = [
   {
@@ -37,5 +37,25 @@ describe('place duplicate detection', () => {
     expect(findDuplicatePlace({ id: 'moli', name: 'Bar Moli', providerPlaceId: 'google-moli' }, savedPlaces, { excludeId: 'moli' })).toBeNull();
     expect(findDuplicatePlace({ name: 'Heladería Nueva', lat: 37.34691, lng: -5.98179 }, savedPlaces)).toBeNull();
     expect(findDuplicatePlace({ name: 'Heladería Nueva', address: 'Av. de Finlandia, Sevilla', lat: 37.34691, lng: -5.98179 }, savedPlaces)).toBeNull();
+  });
+
+  it('keeps preview duplicate disposition conservative and identifies its collection', () => {
+    expect(getImportDuplicate({ providerPlaceId: 'google-moli' }, savedPlaces, [])).toMatchObject({ status: 'probable', matchedCollection: 'saved', matchedId: 'moli' });
+    expect(getImportDuplicate({ name: 'Sushi Sakura', lat: 37.34692, lng: -5.98178 }, [], [savedPlaces[1]])).toMatchObject({ status: 'possible', matchedCollection: 'inbox', matchedId: 'next-door' });
+    expect(getImportDuplicate({ name: 'Nuevo lugar' }, savedPlaces, [])).toEqual({ status: 'none', matchedCollection: null, matchedId: null, reasons: [] });
+  });
+
+  it('uses preview source identity even when the editable place has no provider fields', () => {
+    const preview = {
+      source: { providerId: 'google-moli', canonicalUrl: 'https://maps.google.com/?q=Bar+Moli' },
+      place: { title: 'Renamed café', address: '', lat: '', lng: '' },
+    };
+
+    expect(getImportDuplicate(preview, savedPlaces, [])).toMatchObject({
+      status: 'probable',
+      matchedCollection: 'saved',
+      matchedId: 'moli',
+      reasons: ['providerPlaceId'],
+    });
   });
 });

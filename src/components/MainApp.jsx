@@ -35,7 +35,7 @@ import {
 import { findNearestPlace } from '../lib/geo';
 import { captureDiagnostic, recordBreadcrumb } from '../lib/diagnostics';
 import { importPlaceFromUrl } from '../lib/placeImporter';
-import { findDuplicatePlace } from '../lib/placeDuplicates';
+import { findDuplicatePlace, getImportDuplicate } from '../lib/placeDuplicates';
 import { getPlaceRecordMigration, sanitizePlaceRecord } from '../lib/placeData';
 import { buildDirectionsUrl } from '../lib/mapDirections';
 import FilterDrawer from './filters/FilterDrawer';
@@ -82,6 +82,12 @@ function hasValidCoordinate(value) {
 
 function hasValidCoordinates(place) {
   return hasValidCoordinate(place?.lat) && hasValidCoordinate(place?.lng);
+}
+
+function createImportIdempotencyKey() {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (!uuid) throw new Error('No se ha podido preparar la confirmación de la importación. Vuelve a intentarlo.');
+  return `import_${uuid.replaceAll('-', '')}`;
 }
 
 function activeFilterCount(filters) {
@@ -465,29 +471,36 @@ export default function MainApp() {
 
   async function handleImportLink(url) {
     recordBreadcrumb('link.import.started');
-    const candidate = await importPlaceFromUrl(url, auth);
-    const duplicatePlace = findDuplicatePlace(candidate, places);
-    if (duplicatePlace) {
-      recordBreadcrumb('link.import.duplicate', { target: 'places' });
-      setLinkDialogOpen(false);
-      openDuplicatePlace(duplicatePlace, `Ya tenías guardado ${duplicatePlace.name}. Te lo abro.`);
-      return;
-    }
+    const preview = await importPlaceFromUrl(url, auth);
+    return {
+      ...preview,
+      idempotencyKey: createImportIdempotencyKey(),
+      duplicate: getImportDuplicate(preview, places, inbox),
+    };
+  }
 
-    const duplicateInboxItem = findDuplicatePlace(candidate, inbox);
-    if (duplicateInboxItem) {
-      recordBreadcrumb('link.import.duplicate', { target: 'inbox' });
-      setLinkDialogOpen(false);
-      openReview();
-      showToast(`Ese enlace ya está en revisión: ${duplicateInboxItem.title || duplicateInboxItem.name}.`, 'warning');
-      return;
-    }
+  function recomputeImportDuplicate(preview) {
+    return getImportDuplicate(preview, places, inbox);
+  }
 
-    await inboxStore.addItem(candidate);
-    setLinkDialogOpen(false);
+  async function handleConfirmImportPreview(preview) {
+    const created = await inboxStore.addItem({
+      ...preview.place,
+      title: preview.place.title,
+      sourceType: preview.source.provider,
+      sourceUrl: preview.source.canonicalUrl,
+      resolvedUrl: preview.source.resolvedUrl,
+      providerPlaceId: preview.source.providerId,
+      importQuality: preview.quality,
+      importWarnings: preview.quality.warnings || [],
+      importAcknowledgedWarnings: preview.acknowledgedWarnings || [],
+      importSource: preview.source,
+      importDuplicate: preview.duplicate,
+    }, { durable: true, idempotencyKey: preview.idempotencyKey });
+    if (!created?.committed) throw new Error('No se ha podido confirmar la importación. Vuelve a intentarlo.');
     openReview();
     showToast('Enlace analizado. Revísalo antes de guardarlo.', 'info');
-    recordBreadcrumb('link.import.completed', { sourceType: candidate.sourceType || 'unknown' });
+    recordBreadcrumb('link.import.completed', { sourceType: preview.source.provider || 'unknown' });
   }
 
   async function handleSaveInboxItem(item) {
@@ -927,6 +940,8 @@ export default function MainApp() {
         open={linkDialogOpen}
         onClose={() => setLinkDialogOpen(false)}
         onImport={handleImportLink}
+        onConfirm={handleConfirmImportPreview}
+        onRecomputeDuplicate={recomputeImportDuplicate}
       />
       <FilterDrawer open={filtersOpen} filters={mapFilters} setFilters={setMapFilters} onClose={() => setFiltersOpen(false)} places={places} />
       <LocationConsentDialog

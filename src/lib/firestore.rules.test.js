@@ -44,6 +44,17 @@ function validInbox(overrides = {}) {
   };
 }
 
+function validImportedInbox(overrides = {}) {
+  return validInbox({
+    importQuality: { confidence: 'medium', coordinateQuality: 'approximate', provenance: 'metadata', warnings: ['APPROXIMATE_COORDINATES'], ambiguity: false, verified: false },
+    importWarnings: ['APPROXIMATE_COORDINATES'],
+    importAcknowledgedWarnings: ['APPROXIMATE_COORDINATES'],
+    importSource: { provider: 'google', inputUrl: 'https://maps.google.com/?q=Cafe', canonicalUrl: 'https://maps.google.com/?q=Cafe', resolvedUrl: 'https://maps.google.com/?q=Cafe', providerId: 'place-1' },
+    importDuplicate: { status: 'none', matchedCollection: null, matchedId: null, reasons: [] },
+    ...overrides,
+  });
+}
+
 describe.skipIf(!emulatorAvailable)('Firestore security rules', () => {
   beforeAll(async () => {
     testEnvironment = await initializeTestEnvironment({
@@ -82,6 +93,13 @@ describe.skipIf(!emulatorAvailable)('Firestore security rules', () => {
     await assertFails(setDoc(doc(db, 'users', 'owner', 'places', 'invalid-coordinate'), validPlace({ lat: 91 })));
     await assertFails(setDoc(doc(db, 'users', 'owner', 'places', 'invalid-rating'), validPlace({ rating: 5.1 })));
     await assertFails(setDoc(doc(db, 'users', 'owner', 'inbox', 'oversized'), validInbox({ title: 'x'.repeat(181) })));
+  });
+
+  it('allows bounded import metadata while rejecting unexpected keys and invalid metadata types', async () => {
+    const db = testEnvironment.authenticatedContext('owner').firestore();
+    await assertSucceeds(setDoc(doc(db, 'users', 'owner', 'inbox', 'imported'), validImportedInbox()));
+    await assertFails(setDoc(doc(db, 'users', 'owner', 'inbox', 'unexpected-import-key'), validImportedInbox({ importUnexpected: true })));
+    await assertFails(setDoc(doc(db, 'users', 'owner', 'inbox', 'invalid-import-type'), validImportedInbox({ importWarnings: 'APPROXIMATE_COORDINATES' })));
   });
 
   it('does not allow createdAt to change during an update', async () => {
